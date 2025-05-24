@@ -1,0 +1,258 @@
+<Window x:Class="DiskSpaceAnalyzer.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:DiskSpaceAnalyzer"
+        xmlns:controls="clr-namespace:DiskSpaceAnalyzer.Controls"
+        xmlns:converters="clr-namespace:DiskSpaceAnalyzer.Converters"
+        xmlns:models="clr-namespace:DiskSpaceAnalyzer.Models"
+        xmlns:viewModels="clr-namespace:DiskSpaceAnalyzer.ViewModels"
+        mc:Ignorable="d"
+        Title="Disk Space Analyzer"
+        Height="800" Width="1200"
+        Background="{StaticResource PrimaryBackgroundBrush}"
+        d:DataContext="{d:DesignInstance viewModels:MainViewModel, IsDesignTimeCreatable=True}"
+        WindowStartupLocation="CenterScreen">
+
+    <Window.Resources>
+        <converters:FileSizeConverter x:Key="FileSizeConverter" />
+        <converters:SizeToColorConverter x:Key="SizeToColorConverter" />
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Toolbar -->
+        <Border Grid.Row="0" Background="{StaticResource SecondaryBackgroundBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+            <Grid Margin="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <Button Grid.Column="0"
+                        Content="Browse..."
+                        Style="{StaticResource ModernButtonStyle}"
+                        Command="{Binding SelectFolderCommand}" />
+
+                <TextBox Grid.Column="1"
+                         Text="{Binding SelectedPath, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource ModernTextBoxStyle}"
+                         Margin="10,0" />
+
+                <ComboBox Grid.Column="2"
+                          SelectedItem="{Binding SelectedScanMode}"
+                          Style="{StaticResource ModernComboBoxStyle}"
+                          ItemContainerStyle="{StaticResource ModernComboBoxItemStyle}"
+                          Width="120"
+                          Margin="5,0">
+                    <ComboBox.Items>
+                        <models:ScanMode>TopLevel</models:ScanMode>
+                        <models:ScanMode>Recursive</models:ScanMode>
+                    </ComboBox.Items>
+                </ComboBox>
+
+                <Button Grid.Column="3"
+                        Content="Scan"
+                        Style="{StaticResource ModernButtonStyle}"
+                        Command="{Binding StartScanCommand}"
+                        IsEnabled="{Binding IsScanning, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Invert}" />
+
+                <Button Grid.Column="4"
+                        Content="Cancel"
+                        Style="{StaticResource ModernButtonStyle}"
+                        Command="{Binding CancelScanCommand}"
+                        IsEnabled="{Binding IsScanning}" />
+            </Grid>
+        </Border>
+
+        <!-- Main Content -->
+        <Grid Grid.Row="1" Margin="10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*" />
+                <ColumnDefinition Width="5" />
+                <ColumnDefinition Width="3*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Directory List -->
+            <Border Grid.Column="0"
+                    Background="{StaticResource SecondaryBackgroundBrush}"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="4">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <!-- Sort Controls -->
+                    <Border Grid.Row="0"
+                            Background="{StaticResource PrimaryBackgroundBrush}"
+                            BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="0,0,0,1">
+                        <StackPanel Orientation="Horizontal" Margin="10,5">
+                            <TextBlock Text="Sort by:"
+                                       Foreground="{StaticResource SecondaryTextBrush}"
+                                       VerticalAlignment="Center" />
+                            <Button Content="Size"
+                                    Style="{StaticResource ModernButtonStyle}"
+                                    Command="{Binding ChangeSortModeCommand}"
+                                    CommandParameter="{x:Static models:SortMode.Size}"
+                                    Margin="5,0" />
+                            <Button Content="Name"
+                                    Style="{StaticResource ModernButtonStyle}"
+                                    Command="{Binding ChangeSortModeCommand}"
+                                    CommandParameter="{x:Static models:SortMode.Name}"
+                                    Margin="5,0" />
+                            <Button Content="Modified"
+                                    Style="{StaticResource ModernButtonStyle}"
+                                    Command="{Binding ChangeSortModeCommand}"
+                                    CommandParameter="{x:Static models:SortMode.LastModified}"
+                                    Margin="5,0" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Directory Items -->
+                    <ListView Grid.Row="1"
+                              ItemsSource="{Binding SortedItemsView}"
+                              SelectedItem="{Binding SelectedDirectory}"
+                              Background="Transparent"
+                              BorderThickness="0"
+                              Foreground="{StaticResource TextBrush}"
+                              HorizontalContentAlignment="Stretch">
+                        <ListView.ItemTemplate>
+                            <DataTemplate DataType="{x:Type viewModels:DirectoryItemViewModel}">
+                                <Grid Margin="5">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+
+                                    <TextBlock Grid.Row="0" Grid.Column="0"
+                                               Text="{Binding DisplayName}"
+                                               FontWeight="Bold"
+                                               Foreground="{StaticResource TextBrush}" />
+
+                                    <TextBlock Grid.Row="0" Grid.Column="1"
+                                               Text="{Binding FormattedSize}"
+                                               FontWeight="Bold"
+                                               Foreground="{StaticResource AccentBrush}" />
+
+                                    <TextBlock Grid.Row="1" Grid.Column="0"
+                                               Text="{Binding FileCount, StringFormat='{}{0:N0} files'}"
+                                               FontSize="11"
+                                               Foreground="{StaticResource SecondaryTextBrush}" />
+
+                                    <TextBlock Grid.Row="1" Grid.Column="1"
+                                               Text="{Binding PercentageOfParent, StringFormat='{}{0:F1}%', Mode=OneWay}"
+                                               FontSize="11"
+                                               Foreground="{StaticResource SecondaryTextBrush}" />
+
+                                    <ProgressBar Grid.Row="2" Grid.ColumnSpan="2" Grid.Column="0"
+                                                 Value="{Binding PercentageOfParent, Mode=OneWay}"
+                                                 Maximum="100"
+                                                 Height="4"
+                                                 Background="#FF404040"
+                                                 Foreground="{Binding PercentageOfParent, Converter={StaticResource SizeToColorConverter}}"
+                                                 Margin="0,2,0,0" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </Grid>
+            </Border>
+
+            <GridSplitter Grid.Column="1"
+                          Width="5"
+                          HorizontalAlignment="Stretch"
+                          Background="{StaticResource BorderBrush}" />
+
+            <!-- TreeMap Visualization -->
+            <Border Grid.Column="2"
+                    Background="{StaticResource SecondaryBackgroundBrush}"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="4">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0"
+                               Text="Visual Space Distribution"
+                               FontSize="14"
+                               FontWeight="Bold"
+                               Foreground="{StaticResource TextBrush}"
+                               Margin="10"
+                               HorizontalAlignment="Center" />
+
+                    <controls:TreeMapControl Grid.Row="1"
+                                             Items="{Binding DirectoryItems}"
+                                             Margin="10" />
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- Progress -->
+        <Border Grid.Row="2" Background="{StaticResource SecondaryBackgroundBrush}"
+                Visibility="{Binding IsScanning, Converter={StaticResource BoolToVisibilityConverter}}">
+            <Grid Margin="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0"
+                           Text="{Binding ScanProgress}"
+                           Foreground="{StaticResource TextBrush}"
+                           FontSize="12" />
+
+                <ProgressBar Grid.Row="1"
+                             IsIndeterminate="True"
+                             Margin="0,5,0,0" />
+            </Grid>
+        </Border>
+
+        <!-- Status Bar -->
+        <Border Grid.Row="3"
+                Background="{StaticResource SecondaryBackgroundBrush}"
+                BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="0,1,0,0">
+            <Grid Margin="10,5">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0"
+                           Text="{Binding ScanSummary}"
+                           Foreground="{StaticResource SecondaryTextBrush}"
+                           FontSize="11" />
+
+                <TextBlock Grid.Column="1"
+                           Text="{Binding ScanResult.ErrorCount, StringFormat='Errors: {0}'}"
+                           Foreground="{StaticResource SecondaryTextBrush}"
+                           FontSize="11"
+                           Visibility="{Binding ScanResult.ErrorCount, Converter={StaticResource BoolToVisibilityConverter}}" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
