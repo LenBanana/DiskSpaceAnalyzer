@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <UseWPF>true</UseWPF>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <ApplicationIcon>icons8-active-directory-96.ico</ApplicationIcon>
+    <ApplicationIcon>main_icon.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

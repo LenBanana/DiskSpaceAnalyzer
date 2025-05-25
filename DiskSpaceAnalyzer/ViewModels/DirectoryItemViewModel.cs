@@ -6,22 +6,21 @@ namespace DiskSpaceAnalyzer.ViewModels
 {
     public partial class DirectoryItemViewModel : BaseViewModel
     {
-        [ObservableProperty]
-        private DirectoryItem _directoryItem;
+        [ObservableProperty] private DirectoryItem _directoryItem;
 
-        [ObservableProperty]
-        private bool _isExpanded;
+        [ObservableProperty] private bool _isExpanded;
 
-        [ObservableProperty]
-        private bool _isSelected;
+        [ObservableProperty] private bool _isSelected;
 
         public ObservableCollection<DirectoryItemViewModel> Children { get; }
+        public DirectoryItemViewModel? Parent { get; }
 
-        public DirectoryItemViewModel(DirectoryItem directoryItem)
+        public DirectoryItemViewModel(DirectoryItem directoryItem, DirectoryItemViewModel? parent = null)
         {
             _directoryItem = directoryItem;
-            Children = new ObservableCollection<DirectoryItemViewModel>();
-            
+            Parent = parent;
+            Children = [];
+
             LoadChildren();
         }
 
@@ -30,7 +29,7 @@ namespace DiskSpaceAnalyzer.ViewModels
             Children.Clear();
             foreach (var child in DirectoryItem.Children)
             {
-                Children.Add(new DirectoryItemViewModel(child));
+                Children.Add(new DirectoryItemViewModel(child, this));
             }
         }
 
@@ -60,7 +59,7 @@ namespace DiskSpaceAnalyzer.ViewModels
                 _ => $"{bytes} B"
             };
         }
-        
+
         partial void OnDirectoryItemChanged(DirectoryItem? oldValue, DirectoryItem newValue)
         {
             OnPropertyChanged(nameof(DisplayName));
@@ -73,6 +72,5 @@ namespace DiskSpaceAnalyzer.ViewModels
             OnPropertyChanged(nameof(HasError));
             OnPropertyChanged(nameof(Error));
         }
-        
     }
 }

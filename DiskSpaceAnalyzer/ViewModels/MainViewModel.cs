@@ -14,65 +14,66 @@ namespace DiskSpaceAnalyzer.ViewModels
 {
     public partial class MainViewModel : BaseViewModel
     {
-        private readonly IFileSystemService _fileSystemService;
+        private readonly FileSystemService _fileSystemService;
+        private readonly ParallelFileSystemService _parallelFileSystemService;
         private readonly IDialogService _dialogService;
+
+        private IFileSystemService _currentFileSystemService;
         private CancellationTokenSource? _cancellationTokenSource;
 
-        [ObservableProperty]
-        private string _selectedPath = string.Empty;
+        [ObservableProperty] private string _selectedPath = string.Empty;
 
-        [ObservableProperty]
-        private ScanMode _selectedScanMode = ScanMode.TopLevel;
+        [ObservableProperty] private ScanMode _selectedScanMode = ScanMode.TopLevel;
 
-        [ObservableProperty]
-        private bool _isScanning;
+        [ObservableProperty] private bool _useParallelProcessing = true;
 
-        [ObservableProperty]
-        private string _scanProgress = string.Empty;
+        [ObservableProperty] private bool _isScanning;
 
-        [ObservableProperty]
-        private int _progressPercentage;
+        [ObservableProperty] private string _scanProgress = string.Empty;
 
-        [ObservableProperty]
-        private ScanResult? _scanResult;
+        [ObservableProperty] private int _progressPercentage;
 
-        [ObservableProperty]
-        private DirectoryItemViewModel? _selectedDirectory;
+        [ObservableProperty] private ScanResult? _scanResult;
 
-        [ObservableProperty]
-        private SortMode _selectedSortMode = SortMode.Size;
+        [ObservableProperty] private DirectoryItemViewModel? _selectedDirectory;
 
-        [ObservableProperty]
-        private SortDirection _selectedSortDirection = SortDirection.Descending;
+        [ObservableProperty] private SortMode _selectedSortMode = SortMode.Size;
+
+        [ObservableProperty] private SortDirection _selectedSortDirection = SortDirection.Descending;
 
         public ObservableCollection<DirectoryItemViewModel> DirectoryItems { get; }
+        private ObservableCollection<DirectoryItemViewModel> SelectedItems { get; }
         public ICollectionView SortedItemsView { get; }
-        public ObservableCollection<string> AvailableDrives { get; }
-        public ObservableCollection<string> ScanErrors { get; }
+        private ObservableCollection<string> AvailableDrives { get; }
+        private ObservableCollection<string> ScanErrors { get; }
 
-        public MainViewModel(IFileSystemService fileSystemService, IDialogService dialogService)
+        public MainViewModel(FileSystemService fileSystemService, ParallelFileSystemService parallelFileSystemService,
+            IDialogService dialogService)
         {
             _fileSystemService = fileSystemService;
+            _parallelFileSystemService = parallelFileSystemService;
+            _currentFileSystemService = parallelFileSystemService;
             _dialogService = dialogService;
             DirectoryItems = [];
+            SelectedItems = [];
             AvailableDrives = [];
             ScanErrors = [];
 
-            SortedItemsView = CollectionViewSource.GetDefaultView(DirectoryItems);
+            SortedItemsView = CollectionViewSource.GetDefaultView(SelectedItems);
             SortedItemsView.SortDescriptions.Add(
                 new SortDescription(nameof(DirectoryItemViewModel.Size),
                     ListSortDirection.Descending));
             SortedItemsView.SortDescriptions.Add(
                 new SortDescription(nameof(DirectoryItemViewModel.DisplayName),
                     ListSortDirection.Ascending));
-            
+
             LoadAvailableDrives();
         }
 
         private void LoadAvailableDrives()
         {
             AvailableDrives.Clear();
-            foreach (var drive in _fileSystemService.GetDrives())
+            foreach (var drive in _currentFileSystemService.GetDrives())
             {
                 AvailableDrives.Add(drive);
             }
@@ -91,7 +92,7 @@ namespace DiskSpaceAnalyzer.ViewModels
         [RelayCommand]
         private async Task StartScan()
         {
-            if (string.IsNullOrEmpty(SelectedPath) || !_fileSystemService.DirectoryExists(SelectedPath))
+            if (string.IsNullOrEmpty(SelectedPath) || !_currentFileSystemService.DirectoryExists(SelectedPath))
             {
                 _dialogService.ShowError("Invalid Path", "Please select a valid directory path.");
                 return;
@@ -104,7 +105,7 @@ namespace DiskSpaceAnalyzer.ViewModels
 
             IsScanning = true;
             _cancellationTokenSource = new CancellationTokenSource();
-            
+
             var progress = new Progress<ScanProgress>(UpdateProgress);
             DirectoryItems.Clear();
             ScanErrors.Clear();
@@ -113,10 +114,10 @@ namespace DiskSpaceAnalyzer.ViewModels
             {
                 await Task.Run(async () =>
                 {
-                    ScanResult = await _fileSystemService.ScanDirectoryAsync(
-                        SelectedPath, 
-                        SelectedScanMode, 
-                        progress, 
+                    ScanResult = await _currentFileSystemService.ScanDirectoryAsync(
+                        SelectedPath,
+                        SelectedScanMode,
+                        progress,
                         _cancellationTokenSource.Token);
                 });
 
@@ -153,45 +154,45 @@ namespace DiskSpaceAnalyzer.ViewModels
 
         private void UpdateProgress(ScanProgress p)
         {
-            // 1) Plain text for the status bar
             ScanProgress = $"Scanning: {p.CurrentPath}";
-
-            // 2) Live list / treemap update
-            if (p.CompletedItem == null) return;
-
-            // Do we already have the directory in the collection?
-            var existing = DirectoryItems
-                .FirstOrDefault(vm => vm.FullPath.Equals(p.CompletedItem.FullPath,
-                    StringComparison.OrdinalIgnoreCase));
-
-            if (existing == null)
-            {
-                // First time we see this directory – simply add it.
-                DirectoryItems.Add(new DirectoryItemViewModel(p.CompletedItem));
-            }
-            else
-            {
-                // The size (or error info …) may have changed – update the VM.
-                existing.DirectoryItem = p.CompletedItem;
-            }
-
-            // Keep the list sorted according to the current sort settings
-            SortItems(DirectoryItems.ToList());
         }
 
         private void UpdateDirectoryItems()
         {
             if (ScanResult?.RootDirectory == null) return;
-            
+
+            DirectoryItems.Clear();
+            SelectedItems.Clear();
             var items = ScanResult.RootDirectory.Children
                 .Select(item => new DirectoryItemViewModel(item))
                 .ToList();
 
             SortItems(items);
 
-            foreach (var item in items.Where(item => !DirectoryItems.Any(existing => existing.FullPath.Equals(item.FullPath, StringComparison.OrdinalIgnoreCase))))
+            foreach (var item in items)
             {
                 DirectoryItems.Add(item);
+                SelectedItems.Add(item);
+            }
+        }
+
+        public void UpdateSelectedDirectory(DirectoryItemViewModel? directory)
+        {
+            SelectedDirectory = directory;
+            SelectedItems.Clear();
+            if (directory == null)
+            {
+                foreach (var item in DirectoryItems)
+                {
+                    SelectedItems.Add(item);
+                }
+
+                return;
+            }
+
+            foreach (var child in directory.Children)
+            {
+                SelectedItems.Add(child);
             }
         }
 
@@ -210,22 +211,22 @@ namespace DiskSpaceAnalyzer.ViewModels
             switch (SelectedSortMode)
             {
                 case SortMode.Name:
-                    items.Sort((a, b) => SelectedSortDirection == SortDirection.Ascending 
+                    items.Sort((a, b) => SelectedSortDirection == SortDirection.Ascending
                         ? string.Compare(a.DisplayName, b.DisplayName, StringComparison.OrdinalIgnoreCase)
                         : string.Compare(b.DisplayName, a.DisplayName, StringComparison.OrdinalIgnoreCase));
                     break;
                 case SortMode.Size:
-                    items.Sort((a, b) => SelectedSortDirection == SortDirection.Ascending 
+                    items.Sort((a, b) => SelectedSortDirection == SortDirection.Ascending
                         ? a.Size.CompareTo(b.Size)
                         : b.Size.CompareTo(a.Size));
                     break;
                 case SortMode.LastModified:
-                    items.Sort((a, b) => SelectedSortDirection == SortDirection.Ascending 
+                    items.Sort((a, b) => SelectedSortDirection == SortDirection.Ascending
                         ? a.DirectoryItem.LastModified.CompareTo(b.DirectoryItem.LastModified)
                         : b.DirectoryItem.LastModified.CompareTo(a.DirectoryItem.LastModified));
                     break;
                 case SortMode.FileCount:
-                    items.Sort((a, b) => SelectedSortDirection == SortDirection.Ascending 
+                    items.Sort((a, b) => SelectedSortDirection == SortDirection.Ascending
                         ? a.FileCount.CompareTo(b.FileCount)
                         : b.FileCount.CompareTo(a.FileCount));
                     break;
@@ -237,24 +238,31 @@ namespace DiskSpaceAnalyzer.ViewModels
         {
             if (SelectedSortMode == sortMode)
             {
-                SelectedSortDirection = SelectedSortDirection == SortDirection.Ascending 
-                    ? SortDirection.Descending 
+                SelectedSortDirection = SelectedSortDirection == SortDirection.Ascending
+                    ? SortDirection.Descending
                     : SortDirection.Ascending;
             }
             else
             {
                 SelectedSortMode = sortMode;
             }
-            
+
             UpdateDirectoryItems();
         }
 
-        public string ScanSummary 
+        partial void OnUseParallelProcessingChanged(bool value)
+        {
+            _currentFileSystemService = value
+                ? _parallelFileSystemService
+                : _fileSystemService;
+        }
+
+        public string ScanSummary
         {
             get
             {
                 if (ScanResult == null) return string.Empty;
-                
+
                 return $"Scanned {ScanResult.TotalDirectories:N0} directories and {ScanResult.TotalFiles:N0} files " +
                        $"({FormatBytes(ScanResult.TotalSize)}) in {ScanResult.ScanDuration.TotalSeconds:F1} seconds";
             }

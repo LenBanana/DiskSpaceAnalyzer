@@ -85,7 +85,7 @@ namespace DiskSpaceAnalyzer.Services
                 foreach (var subDir in subdirectories)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    
+
                     // Report progress for each subdirectory
                     progress.Report(new ScanProgress
                     {
@@ -97,7 +97,7 @@ namespace DiskSpaceAnalyzer.Services
                     try
                     {
                         DirectoryItem childItem;
-                        
+
                         if (mode == ScanMode.Recursive)
                         {
                             childItem = await ScanDirectoryInternalAsync(subDir.FullName, mode, progress, cancellationToken, errors);
@@ -121,7 +121,7 @@ namespace DiskSpaceAnalyzer.Services
                         childItem.Parent = item;
                         item.Children.Add(childItem);
                         totalSize += childItem.Size;
-                        
+
                         if (item.Parent == null)          // item == Root
                         {
                             progress.Report(new ScanProgress
@@ -202,7 +202,7 @@ namespace DiskSpaceAnalyzer.Services
                     ErrorCount = errors.Count
                 });
                 var directory = new DirectoryInfo(path);
-                
+
                 // Add file sizes
                 foreach (var file in directory.GetFiles())
                 {
@@ -243,12 +243,12 @@ namespace DiskSpaceAnalyzer.Services
             return size;
         }
 
-        private long CountFiles(DirectoryItem item)
+        private static long CountFiles(DirectoryItem item)
         {
             return item.FileCount + item.Children.Sum(CountFiles);
         }
 
-        private long CountDirectories(DirectoryItem item)
+        private static long CountDirectories(DirectoryItem item)
         {
             return item.DirectoryCount + item.Children.Sum(CountDirectories);
         }

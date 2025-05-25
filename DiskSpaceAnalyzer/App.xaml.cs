@@ -17,7 +17,8 @@ namespace DiskSpaceAnalyzer
                 .ConfigureServices((_, services) =>
                 {
                     // Services
-                    services.AddSingleton<IFileSystemService, FileSystemService>();
+                    services.AddSingleton<ParallelFileSystemService>();
+                    services.AddSingleton<FileSystemService>();
                     services.AddSingleton<IDialogService, DialogService>();
                     
                     // ViewModels
