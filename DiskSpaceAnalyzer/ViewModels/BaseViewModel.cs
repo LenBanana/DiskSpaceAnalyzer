@@ -1,8 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 
-namespace DiskSpaceAnalyzer.ViewModels
+namespace DiskSpaceAnalyzer.ViewModels;
+
+public abstract class BaseViewModel : ObservableObject
 {
-    public abstract class BaseViewModel : ObservableObject
-    {
-    }
 }

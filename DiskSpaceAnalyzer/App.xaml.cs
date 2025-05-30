@@ -1,44 +1,43 @@
 using System.Windows;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using DiskSpaceAnalyzer.Services;
 using DiskSpaceAnalyzer.ViewModels;
 using DiskSpaceAnalyzer.Views;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
-namespace DiskSpaceAnalyzer
+namespace DiskSpaceAnalyzer;
+
+public partial class App : Application
 {
-    public partial class App : Application
+    private IHost? _host;
+
+    protected override void OnStartup(StartupEventArgs e)
     {
-        private IHost? _host;
+        _host = Host.CreateDefaultBuilder()
+            .ConfigureServices((_, services) =>
+            {
+                // Services
+                services.AddSingleton<ParallelFileSystemService>();
+                services.AddSingleton<FileSystemService>();
+                services.AddSingleton<IDialogService, DialogService>();
 
-        protected override void OnStartup(StartupEventArgs e)
-        {
-            _host = Host.CreateDefaultBuilder()
-                .ConfigureServices((_, services) =>
-                {
-                    // Services
-                    services.AddSingleton<ParallelFileSystemService>();
-                    services.AddSingleton<FileSystemService>();
-                    services.AddSingleton<IDialogService, DialogService>();
-                    
-                    // ViewModels
-                    services.AddTransient<MainViewModel>();
-                    
-                    // Views
-                    services.AddTransient<MainWindow>();
-                })
-                .Build();
+                // ViewModels
+                services.AddTransient<MainViewModel>();
 
-            var mainWindow = _host.Services.GetRequiredService<MainWindow>();
-            mainWindow.Show();
+                // Views
+                services.AddTransient<MainWindow>();
+            })
+            .Build();
 
-            base.OnStartup(e);
-        }
+        var mainWindow = _host.Services.GetRequiredService<MainWindow>();
+        mainWindow.Show();
 
-        protected override void OnExit(ExitEventArgs e)
-        {
-            _host?.Dispose();
-            base.OnExit(e);
-        }
+        base.OnStartup(e);
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        _host?.Dispose();
+        base.OnExit(e);
     }
 }

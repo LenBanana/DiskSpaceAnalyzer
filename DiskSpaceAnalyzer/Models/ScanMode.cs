@@ -1,22 +1,21 @@
-namespace DiskSpaceAnalyzer.Models
+namespace DiskSpaceAnalyzer.Models;
+
+public enum ScanMode
 {
-    public enum ScanMode
-    {
-        TopLevel,
-        Recursive
-    }
+    TopLevel,
+    Recursive
+}
 
-    public enum SortMode
-    {
-        Name,
-        Size,
-        LastModified,
-        FileCount
-    }
+public enum SortMode
+{
+    Name,
+    Size,
+    LastModified,
+    FileCount
+}
 
-    public enum SortDirection
-    {
-        Ascending,
-        Descending
-    }
+public enum SortDirection
+{
+    Ascending,
+    Descending
 }
