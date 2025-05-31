@@ -52,7 +52,7 @@
                 </LinearGradientBrush>
             </Border.Background>
 
-            <Grid Margin="20,16">
+            <Grid Margin="10,5">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
@@ -138,7 +138,7 @@
             </Grid.ColumnDefinitions>
 
             <!-- Left Panel - Directory List -->
-            <Border Grid.Column="0" Style="{StaticResource ModernCardStyle}">
+            <Border Grid.Column="0" Style="{StaticResource ModernCardStyle}" Padding="0">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -283,12 +283,12 @@
 
             <!-- Splitter -->
             <GridSplitter Grid.Column="1"
-                          Width="8"
+                          Width="5"
                           HorizontalAlignment="Stretch"
                           Background="Transparent" />
 
             <!-- Right Panel - TreeMap -->
-            <Border Grid.Column="2" Style="{StaticResource ModernCardStyle}">
+            <Border Grid.Column="2" Style="{StaticResource ModernCardStyle}" Padding="0">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -324,7 +324,7 @@
                     <controls:TreeMapControl Grid.Row="1"
                                              Items="{Binding DirectoryItems}"
                                              CurrentRootChanged="TreeMapControl_CurrentRootChanged"
-                                             Margin="8" />
+                                             Margin="4 0" />
                 </Grid>
             </Border>
         </Grid>

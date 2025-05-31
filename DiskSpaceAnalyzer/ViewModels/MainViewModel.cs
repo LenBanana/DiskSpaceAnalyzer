@@ -32,7 +32,9 @@ public partial class MainViewModel : BaseViewModel
 
     [ObservableProperty] private DirectoryItemViewModel? _selectedDirectory;
 
-    [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(OpenCurrentDirectoryCommand))]
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(OpenCurrentDirectoryCommand))]
+    [NotifyCanExecuteChangedFor(nameof(StartScanCommand))]
     private string _selectedPath = string.Empty;
 
     [ObservableProperty] private ScanMode _selectedScanMode = ScanMode.Recursive;
@@ -89,7 +91,7 @@ public partial class MainViewModel : BaseViewModel
         _lastSelectedPath = selectedPath;
     }
 
-    [RelayCommand(CanExecute = nameof(CanExecuteOpenCurrentDirectory))]
+    [RelayCommand(CanExecute = nameof(IsValidDirectory))]
     private void OpenCurrentDirectory()
     {
         Process.Start(new ProcessStartInfo
@@ -99,12 +101,12 @@ public partial class MainViewModel : BaseViewModel
         });
     }
 
-    private bool CanExecuteOpenCurrentDirectory()
+    private bool IsValidDirectory()
     {
         return !string.IsNullOrEmpty(SelectedPath) && _currentFileSystemService.DirectoryExists(SelectedPath);
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(IsValidDirectory))]
     private async Task StartScan()
     {
         if (string.IsNullOrEmpty(SelectedPath) || !_currentFileSystemService.DirectoryExists(SelectedPath))
