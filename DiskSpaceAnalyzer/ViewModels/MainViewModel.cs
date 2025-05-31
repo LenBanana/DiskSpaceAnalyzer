@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -31,7 +32,8 @@ public partial class MainViewModel : BaseViewModel
 
     [ObservableProperty] private DirectoryItemViewModel? _selectedDirectory;
 
-    [ObservableProperty] private string _selectedPath = string.Empty;
+    [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(OpenCurrentDirectoryCommand))]
+    private string _selectedPath = string.Empty;
 
     [ObservableProperty] private ScanMode _selectedScanMode = ScanMode.Recursive;
 
@@ -85,6 +87,21 @@ public partial class MainViewModel : BaseViewModel
         if (string.IsNullOrEmpty(selectedPath)) return;
         SelectedPath = selectedPath;
         _lastSelectedPath = selectedPath;
+    }
+
+    [RelayCommand(CanExecute = nameof(CanExecuteOpenCurrentDirectory))]
+    private void OpenCurrentDirectory()
+    {
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = SelectedPath,
+            UseShellExecute = true
+        });
+    }
+
+    private bool CanExecuteOpenCurrentDirectory()
+    {
+        return !string.IsNullOrEmpty(SelectedPath) && _currentFileSystemService.DirectoryExists(SelectedPath);
     }
 
     [RelayCommand]

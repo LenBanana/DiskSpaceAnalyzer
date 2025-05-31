@@ -7,6 +7,7 @@
         xmlns:converters="clr-namespace:DiskSpaceAnalyzer.Converters"
         xmlns:models="clr-namespace:DiskSpaceAnalyzer.Models"
         xmlns:viewModels="clr-namespace:DiskSpaceAnalyzer.ViewModels"
+        xmlns:md="http://materialdesigninxaml.net/winfx/xaml/themes"
         mc:Ignorable="d"
         Title="Disk Space Analyzer"
         Height="1000" Width="1500"
@@ -34,6 +35,7 @@
             <Grid Margin="10">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
@@ -43,19 +45,36 @@
 
                 <Button Grid.Column="0"
                         Height="35"
-                        Content="Browse..."
                         Style="{StaticResource ModernButtonStyle}"
-                        Command="{Binding SelectFolderCommand}" />
-
-                <TextBox Grid.Column="1"
+                        Command="{Binding SelectFolderCommand}">
+                    <StackPanel Orientation="Horizontal">
+                        <md:PackIcon Kind="Folders" VerticalAlignment="Center"
+                                     Width="18" Height="18" />
+                        <TextBlock Text="Browse" Margin="6,0,0,0"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <Button Grid.Column="1"
+                        Height="35"
+                        Style="{StaticResource ModernButtonStyle}"
+                        Command="{Binding OpenCurrentDirectoryCommand}"
+                        Margin="5,0,0,0"
+                        ToolTip="Open current directory in File Explorer">
+                    <StackPanel Orientation="Horizontal">
+                        <md:PackIcon Kind="FolderOpen" VerticalAlignment="Center"
+                                      Width="18" Height="18" />
+                        <TextBlock Text="Open" Margin="6,0,0,0"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <TextBox Grid.Column="2"
                          Height="35"
                          Text="{Binding SelectedPath, UpdateSourceTrigger=PropertyChanged}"
                          IsReadOnly="True"
                          Padding="3, 0"
                          Style="{StaticResource ModernTextBoxStyle}"
                          Margin="10,0" />
-
-                <ToggleButton Grid.Column="2"
+                <ToggleButton Grid.Column="3"
                               Height="35"
                               Content="Parallel Scan"
                               Style="{StaticResource ModernToggleButtonStyle}"
@@ -63,7 +82,7 @@
                               Margin="5,0,0,0"
                               ToolTip="Enable parallel scanning" />
 
-                <ComboBox Grid.Column="3"
+                <ComboBox Grid.Column="4"
                           Height="35"
                           Width="120"
                           SelectedItem="{Binding SelectedScanMode}"
@@ -76,14 +95,14 @@
                     </ComboBox.Items>
                 </ComboBox>
 
-                <Button Grid.Column="4"
+                <Button Grid.Column="5"
                         Height="35"
                         Content="Scan"
                         Style="{StaticResource ModernButtonStyle}"
                         Command="{Binding StartScanCommand}"
                         IsEnabled="{Binding IsScanning, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Invert}" />
 
-                <Button Grid.Column="5"
+                <Button Grid.Column="6"
                         Height="35"
                         Content="Cancel"
                         Style="{StaticResource ModernButtonStyle}"
@@ -118,10 +137,10 @@
                             BorderBrush="{StaticResource BorderBrush}"
                             BorderThickness="0,0,0,1">
                         <StackPanel Orientation="Horizontal" Margin="10,5">
-                            <TextBlock Text="↕️"
-                                       FontSize="20"
-                                       Foreground="{StaticResource SecondaryTextBrush}"
-                                       VerticalAlignment="Center" />
+                            <md:PackIcon Kind="Sort"
+                                      Width="20" Height="20"
+                                      VerticalAlignment="Center"
+                                      Foreground="{StaticResource AccentBrush}" />
                             <Button Content="Size"
                                     Style="{StaticResource ModernButtonStyle}"
                                     Command="{Binding ChangeSortModeCommand}"
@@ -208,42 +227,10 @@
                     CornerRadius="4">
                 <Grid>
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
-
-                    <!-- Navigation Controls -->
-                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="10,0,10,5">
-                        <Button Content="🏠 Root"
-                                Height="35"
-                                Style="{StaticResource ModernButtonStyle}"
-                                Click="ResetToRoot_Click"
-                                ToolTip="Go back to root view" />
-                        <Button Content="⬆️ Up"
-                                Height="35"
-                                Style="{StaticResource ModernButtonStyle}"
-                                Click="NavigateUp_Click"
-                                Margin="5,0,0,0"
-                                ToolTip="Go up one level (or right-click on treemap)" />
-                        <ComboBox Name="MaxDepthComboBox"
-                                  SelectedIndex="2"
-                                  Height="35"
-                                  Width="120"
-                                  Margin="10,0,0,0"
-                                  Style="{StaticResource ModernComboBoxStyle}"
-                                  ToolTip="Maximum nesting depth to display">
-                            <ComboBoxItem Content="Depth: 1" />
-                            <ComboBoxItem Content="Depth: 2" />
-                            <ComboBoxItem Content="Depth: 3" />
-                            <ComboBoxItem Content="Depth: 4" />
-                            <ComboBoxItem Content="Depth: 5" />
-                        </ComboBox>
-                    </StackPanel>
-
-                    <controls:TreeMapControl Grid.Row="1"
-                                             x:Name="TreeMapControl"
+                    <controls:TreeMapControl Grid.Row="0"
                                              Items="{Binding DirectoryItems}"
-                                             MaxDepth="{Binding ElementName=MaxDepthComboBox, Path=SelectedIndex, Converter={StaticResource IndexToDepthConverter}}"
                                              CurrentRootChanged="TreeMapControl_CurrentRootChanged"
                                              Margin="5" />
                 </Grid>
@@ -287,10 +274,10 @@
                            FontSize="11" />
 
                 <TextBlock Grid.Column="1"
-                           Text="{Binding ScanResult.ErrorCount, StringFormat='Errors: {0}'}"
+                           Text="{Binding ScanResult.ErrorCount, StringFormat='Errors: {0}', FallbackValue=''}"
                            Foreground="{StaticResource SecondaryTextBrush}"
                            FontSize="11"
-                           Visibility="{Binding ScanResult.ErrorCount, Converter={StaticResource BoolToVisibilityConverter}}" />
+                           Visibility="{Binding ScanResult.ErrorCount, FallbackValue='', Converter={StaticResource BoolToVisibilityConverter}}" />
             </Grid>
         </Border>
     </Grid>

@@ -83,12 +83,29 @@ public class TreeMapControl : Canvas
     {
         base.OnMouseDown(e);
 
-        if (e.ChangedButton == MouseButton.Right && CurrentRoot != null)
+        switch (e.ChangedButton)
         {
-            // Right-click to go up one level
-            NavigateUp();
-            e.Handled = true;
+            case MouseButton.Right or MouseButton.XButton1 when CurrentRoot != null:
+                NavigateUp();
+                e.Handled = true;
+                break;
+            case MouseButton.Middle:
+                NavigateToRoot();
+                e.Handled = true;
+                break;
         }
+    }
+
+    private void NavigateUp()
+    {
+        CurrentRoot = _navigationHistory.Count > 0 ? _navigationHistory.Pop() : null;
+    }
+    
+    private void NavigateToRoot()
+    {
+        if (CurrentRoot == null) return;
+        _navigationHistory.Clear();
+        CurrentRoot = null;
     }
 
     private void UpdateTreeMap()
@@ -356,11 +373,6 @@ public class TreeMapControl : Canvas
 
         CurrentRoot = directory;
         DirectoryClicked?.Invoke(this, directory);
-    }
-
-    private void NavigateUp()
-    {
-        CurrentRoot = _navigationHistory.Count > 0 ? _navigationHistory.Pop() : null;
     }
 
     // Enhanced color scheme that considers depth
