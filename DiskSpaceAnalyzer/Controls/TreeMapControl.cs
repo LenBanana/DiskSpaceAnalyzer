@@ -5,6 +5,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
 using System.Windows.Shapes;
 using DiskSpaceAnalyzer.ViewModels;
 
@@ -25,8 +27,6 @@ public class TreeMapControl : Canvas
             typeof(TreeMapControl), new PropertyMetadata(3, OnMaxDepthChanged));
 
     private readonly Dictionary<UIElement, DirectoryItemViewModel> _elementToItem = new();
-
-    // Navigation history for breadcrumb functionality
     private readonly Stack<DirectoryItemViewModel> _navigationHistory = new();
 
     static TreeMapControl()
@@ -100,7 +100,7 @@ public class TreeMapControl : Canvas
     {
         CurrentRoot = _navigationHistory.Count > 0 ? _navigationHistory.Pop() : null;
     }
-    
+
     private void NavigateToRoot()
     {
         if (CurrentRoot == null) return;
@@ -120,7 +120,6 @@ public class TreeMapControl : Canvas
 
         if (rootItems.Count == 0) return;
 
-        // Add breadcrumb area if we're not at the top level
         var treeMapArea = new Rect(0, 0, ActualWidth, ActualHeight);
         if (CurrentRoot != null) AddBreadcrumbArea(ref treeMapArea);
 
@@ -129,45 +128,72 @@ public class TreeMapControl : Canvas
 
     private void AddBreadcrumbArea(ref Rect treeMapArea)
     {
-        const double breadcrumbHeight = 30;
+        const double breadcrumbHeight = 45;
 
-        // Create breadcrumb background
+        //  gradient background
+        var gradientBrush = new LinearGradientBrush
+        {
+            StartPoint = new Point(0, 0),
+            EndPoint = new Point(0, 1),
+            GradientStops =
+            [
+                new GradientStop(Color.FromRgb(58, 58, 62), 0.0),
+                new GradientStop(Color.FromRgb(45, 45, 48), 1.0)
+            ]
+        };
+
         var breadcrumbBg = new Rectangle
         {
             Width = ActualWidth,
             Height = breadcrumbHeight,
-            Fill = new SolidColorBrush(Color.FromRgb(45, 45, 48)),
-            Stroke = new SolidColorBrush(Color.FromRgb(63, 63, 70)),
-            StrokeThickness = 1
+            Fill = gradientBrush,
+            Effect = new DropShadowEffect
+            {
+                Color = Colors.Black,
+                Opacity = 0.3,
+                ShadowDepth = 2,
+                BlurRadius = 8
+            }
         };
 
         SetLeft(breadcrumbBg, 0);
         SetTop(breadcrumbBg, 0);
         Children.Add(breadcrumbBg);
 
-        // Add breadcrumb text
+        //  breadcrumb container
+        var breadcrumbContainer = new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(40, 255, 255, 255)),
+            CornerRadius = new CornerRadius(8),
+            Margin = new Thickness(12, 8, 12, 8),
+            Width = ActualWidth - 24,
+            Height = breadcrumbHeight - 16
+        };
+
         var breadcrumbText = new TextBlock
         {
             Text = GetBreadcrumbText(),
-            Foreground = Brushes.White,
-            FontSize = 12,
+            Foreground = new SolidColorBrush(Color.FromRgb(240, 240, 240)),
+            FontSize = 14,
             FontWeight = FontWeights.Medium,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(10, 5, 10, 5),
-            ToolTip = "Right-click to go up one level"
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Margin = new Thickness(16, 0, 16, 0),
+            ToolTip = "Right-click anywhere to go up one level"
         };
 
-        SetLeft(breadcrumbText, 5);
-        SetTop(breadcrumbText, 5);
-        Children.Add(breadcrumbText);
+        breadcrumbContainer.Child = breadcrumbText;
 
-        // Adjust treemap area
+        SetLeft(breadcrumbContainer, 0);
+        SetTop(breadcrumbContainer, 0);
+        Children.Add(breadcrumbContainer);
+
         treeMapArea = new Rect(0, breadcrumbHeight, ActualWidth, ActualHeight - breadcrumbHeight);
     }
 
     private string GetBreadcrumbText()
     {
-        if (CurrentRoot == null) return "Root";
+        if (CurrentRoot == null) return "🏠 Root Directory";
 
         var path = new List<string>();
         var current = CurrentRoot;
@@ -178,7 +204,7 @@ public class TreeMapControl : Canvas
             current = GetParentDirectory(current);
         }
 
-        return string.Join(" > ", path);
+        return "📁 " + string.Join(" ▸ ", path);
     }
 
     private static DirectoryItemViewModel? GetParentDirectory(DirectoryItemViewModel item)
@@ -204,9 +230,8 @@ public class TreeMapControl : Canvas
         {
             CreateDirectoryRectangle(item, rect, depth);
 
-            // Recursively create children if there's space and we haven't hit max depth
             if (!item.Children.Any() ||
-                !(rect.Width > 50) || !(rect.Height > 50) ||
+                !(rect.Width > 60) || !(rect.Height > 60) ||
                 depth >= MaxDepth) continue;
             var childrenArea = GetChildrenArea(rect, depth);
             var children = item.Children.Where(c => c.Size > 0).ToList();
@@ -217,9 +242,8 @@ public class TreeMapControl : Canvas
 
     private static Rect GetChildrenArea(Rect parentRect, int depth)
     {
-        // Leave space for the directory label and border
-        var margin = Math.Max(2, 8 - depth * 2);
-        var labelHeight = Math.Max(15, 20 - depth * 2);
+        var margin = Math.Max(3, 10 - depth * 2);
+        var labelHeight = Math.Max(18, 25 - depth * 2);
 
         return new Rect(
             parentRect.X + margin,
@@ -231,132 +255,203 @@ public class TreeMapControl : Canvas
 
     private void CreateDirectoryRectangle(DirectoryItemViewModel item, Rect rect, int depth)
     {
-        if (rect.Width < 5 || rect.Height < 5) return;
+        if (rect.Width < 8 || rect.Height < 8) return;
 
         var hasChildren = item.Children.Any() && depth < MaxDepth;
-        var borderThickness = Math.Max(0.5, 2 - depth * 0.3);
+        var cornerRadius = Math.Max(2, 6 - depth);
 
+        //  rounded rectangle with gradient
         var rectangle = new Rectangle
         {
             Width = rect.Width,
             Height = rect.Height,
-            Fill = GetColorForDepthAndSize(item, depth),
-            Stroke = GetBorderColor(depth),
-            StrokeThickness = borderThickness,
+            Fill = GetGradientBrush(item, depth),
+            Stroke = GetBorderBrush(depth),
+            StrokeThickness = 0.5,
+            RadiusX = cornerRadius,
+            RadiusY = cornerRadius,
             ToolTip = CreateToolTip(item),
-            Cursor = hasChildren ? Cursors.Hand : Cursors.Arrow
+            Cursor = hasChildren ? Cursors.Hand : Cursors.Arrow,
+            Effect = new DropShadowEffect
+            {
+                Color = Colors.Black,
+                Opacity = 0.15,
+                ShadowDepth = 1,
+                BlurRadius = 3
+            }
         };
 
-        // Store the mapping for click handling
         _elementToItem[rectangle] = item;
 
-        // Add hover effects
         rectangle.MouseEnter += Rectangle_MouseEnter;
         rectangle.MouseLeave += Rectangle_MouseLeave;
 
-        // Add click handler for navigation
-        if (hasChildren || item.Children.Any()) rectangle.MouseLeftButtonDown += (_, _) => NavigateToDirectory(item);
+        if (hasChildren || item.Children.Any()) 
+            rectangle.MouseLeftButtonDown += (_, _) => NavigateToDirectory(item);
 
         SetLeft(rectangle, rect.X);
         SetTop(rectangle, rect.Y);
         Children.Add(rectangle);
 
-        // Add directory label
         AddDirectoryLabel(item, rect, depth, hasChildren);
     }
 
     private void Rectangle_MouseEnter(object sender, RoutedEventArgs e)
     {
         if (sender is not Rectangle rect) return;
-        rect.Stroke = Brushes.Yellow;
-        rect.StrokeThickness = Math.Max(rect.StrokeThickness, 2);
+
+        // Smooth hover animation
+        var scaleTransform = new ScaleTransform(1.0, 1.0);
+        rect.RenderTransform = scaleTransform;
+        rect.RenderTransformOrigin = new Point(0.5, 0.5);
+
+        var animation = new DoubleAnimation(1.01, TimeSpan.FromMilliseconds(150))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+
+        scaleTransform.BeginAnimation(ScaleTransform.ScaleXProperty, animation);
+        scaleTransform.BeginAnimation(ScaleTransform.ScaleYProperty, animation);
+
+        rect.Stroke = new SolidColorBrush(Color.FromRgb(255, 215, 0));
+        rect.StrokeThickness = 2;
+
+        // Enhance shadow on hover
+        if (rect.Effect is DropShadowEffect shadow)
+        {
+            shadow.ShadowDepth = 3;
+            shadow.BlurRadius = 6;
+            shadow.Opacity = 0.3;
+        }
     }
 
     private void Rectangle_MouseLeave(object sender, RoutedEventArgs e)
     {
         if (sender is not Rectangle rect || !_elementToItem.TryGetValue(rect, out _)) return;
-        var depth = GetDepthFromColor(rect.Fill);
-        rect.Stroke = GetBorderColor(depth);
-        rect.StrokeThickness = Math.Max(0.5, 2 - depth * 0.3);
+
+        // Smooth return animation
+        if (rect.RenderTransform is ScaleTransform scaleTransform)
+        {
+            var animation = new DoubleAnimation(1.0, TimeSpan.FromMilliseconds(150))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+
+            scaleTransform.BeginAnimation(ScaleTransform.ScaleXProperty, animation);
+            scaleTransform.BeginAnimation(ScaleTransform.ScaleYProperty, animation);
+        }
+
+        var depth = GetDepthFromBrush(rect.Fill);
+        rect.Stroke = GetBorderBrush(depth);
+        rect.StrokeThickness = 0.5;
+
+        // Reset shadow
+        if (rect.Effect is DropShadowEffect shadow)
+        {
+            shadow.ShadowDepth = 1;
+            shadow.BlurRadius = 3;
+            shadow.Opacity = 0.15;
+        }
     }
 
-    private static int GetDepthFromColor(Brush fill)
+    private static int GetDepthFromBrush(Brush fill)
     {
-        if (fill is not SolidColorBrush solidBrush) return 0;
-        var alpha = solidBrush.Color.A;
-        return Math.Max(0, (255 - alpha) / 30);
+        return 0; // Simplified for now
     }
 
     private void AddDirectoryLabel(DirectoryItemViewModel item, Rect rect, int depth, bool hasChildren)
     {
-        var fontSize = Math.Max(8, 12 - depth * 1.5);
-        var labelHeight = fontSize + 4;
+        var fontSize = Math.Max(9, 14 - depth * 1.25);
+        var labelHeight = fontSize + 6;
 
-        if (rect.Width < 30 || rect.Height < labelHeight) return;
+        if (rect.Width < 40 || rect.Height < labelHeight) return;
+
+        //  label container with glass effect
+        var labelContainer = new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(120, 0, 0, 0)),
+            CornerRadius = new CornerRadius(4),
+            Width = rect.Width - 8,
+            Height = Math.Min(labelHeight + 4, 18),
+            Effect = new BlurEffect { Radius = 1 }
+        };
 
         var stackPanel = new StackPanel
         {
             Orientation = Orientation.Horizontal,
-            Width = rect.Width - 4,
-            Height = labelHeight,
-            ToolTip = CreateToolTip(item),
-            Background = new SolidColorBrush(Color.FromArgb(128, 0, 0, 0))
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Margin = new Thickness(8, 2, 8, 2)
         };
 
-        // Add folder icon for directories with children
-        if (hasChildren && rect.Width > 50)
+        //  folder icon
+        if (hasChildren && rect.Width > 60)
         {
             var icon = new TextBlock
             {
-                Text = "📁",
-                FontSize = fontSize - 2,
-                Foreground = Brushes.White,
+                Text = "📂",
+                FontSize = fontSize,
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(2, 0, 2, 0)
+                Margin = new Thickness(0, 0, 4, 0)
             };
             stackPanel.Children.Add(icon);
         }
 
         var textBlock = new TextBlock
         {
-            Text = GetTruncatedText(item.DisplayName, rect.Width - (hasChildren ? 20 : 4), fontSize),
-            Foreground = Brushes.White,
+            Text = GetTruncatedText(item.DisplayName, rect.Width - (hasChildren ? 30 : 16), fontSize),
+            Foreground = new SolidColorBrush(Color.FromRgb(255, 255, 255)),
             FontSize = fontSize,
-            FontWeight = depth == 0 ? FontWeights.Bold : FontWeights.Normal,
+            FontWeight = depth == 0 ? FontWeights.Bold : FontWeights.Medium,
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
-            Margin = new Thickness(2, 1, 2, 1)
+            Effect = new DropShadowEffect
+            {
+                Color = Colors.Black,
+                ShadowDepth = 1,
+                BlurRadius = 2,
+                Opacity = 0.8
+            }
         };
 
         stackPanel.Children.Add(textBlock);
+        labelContainer.Child = stackPanel;
 
-        // Make the label clickable too
         if (hasChildren)
         {
-            stackPanel.Cursor = Cursors.Hand;
-            stackPanel.MouseLeftButtonDown += (_, _) => NavigateToDirectory(item);
-            _elementToItem[stackPanel] = item;
+            labelContainer.Cursor = Cursors.Hand;
+            labelContainer.MouseLeftButtonDown += (_, _) => NavigateToDirectory(item);
+            _elementToItem[labelContainer] = item;
         }
 
-        SetLeft(stackPanel, rect.X + 2);
-        SetTop(stackPanel, rect.Y + 2);
-        Children.Add(stackPanel);
+        SetLeft(labelContainer, rect.X + 2);
+        SetTop(labelContainer, rect.Y + 2);
+        Children.Add(labelContainer);
 
-        // Add size label for larger rectangles
-        if (!(rect.Width > 80) || !(rect.Height > 40)) return;
+        //  size label
+        if (rect is not { Width: > 100, Height: > 50 }) return;
+        var sizeContainer = new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(100, 255, 255, 255)),
+            CornerRadius = new CornerRadius(12),
+            Padding = new Thickness(8, 2, 8, 2),
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Bottom
+        };
+
         var sizeLabel = new TextBlock
         {
             Text = item.FormattedSize,
-            Foreground = new SolidColorBrush(Color.FromArgb(200, 255, 255, 255)),
-            FontSize = Math.Max(7, fontSize - 2),
-            Width = rect.Width - 4,
-            TextAlignment = TextAlignment.Right,
-            Margin = new Thickness(2, 0, 4, 2)
+            Foreground = new SolidColorBrush(Color.FromRgb(20, 20, 20)),
+            FontSize = Math.Max(8, fontSize - 2),
+            FontWeight = FontWeights.SemiBold
         };
 
-        SetLeft(sizeLabel, rect.X);
-        SetTop(sizeLabel, rect.Y + rect.Height - fontSize - 2);
-        Children.Add(sizeLabel);
+        sizeContainer.Child = sizeLabel;
+
+        SetLeft(sizeContainer, rect.X + 5);
+        SetTop(sizeContainer, rect.Y + rect.Height - 20);
+        Children.Add(sizeContainer);
     }
 
     private static string GetTruncatedText(string text, double availableWidth, double fontSize)
@@ -375,70 +470,136 @@ public class TreeMapControl : Canvas
         DirectoryClicked?.Invoke(this, directory);
     }
 
-    // Enhanced color scheme that considers depth
-    private static SolidColorBrush GetColorForDepthAndSize(DirectoryItemViewModel item, int depth)
+    private static Brush GetGradientBrush(DirectoryItemViewModel item, int depth)
     {
-        var baseAlpha = Math.Max(180, 255 - depth * 15);
-        var alpha = (byte)baseAlpha;
         var percentage = item.PercentageOfParent;
+        var alpha = Math.Max(200, 255 - depth * 10);
+        var colorVariant = (int)(item.Size % 6);
 
-        // Enhanced dark theme color palette
-        var colorVariant = (int)(item.Size % 4); // Distribute colors based on size
-
-        return (colorVariant, percentage) switch
+        var colors = (colorVariant, percentage) switch
         {
-            // Warm colors for largest items
-            (0, >= 30) => new SolidColorBrush(Color.FromArgb(alpha, 220, 53, 69)), // Strong red
-            (0, >= 20) => new SolidColorBrush(Color.FromArgb(alpha, 255, 87, 51)), // Orange red
-            (0, >= 10) => new SolidColorBrush(Color.FromArgb(alpha, 255, 133, 27)), // Orange
-            (0, >= 5) => new SolidColorBrush(Color.FromArgb(alpha, 255, 193, 7)), // Yellow
-            (0, _) => new SolidColorBrush(Color.FromArgb(alpha, 40, 167, 69)), // Green
+            // Hot colors for large items
+            (0, >= 25) => (Color.FromRgb(255, 107, 107), Color.FromRgb(255, 142, 83)),
+            (0, >= 15) => (Color.FromRgb(255, 159, 67), Color.FromRgb(255, 206, 84)),
+            (0, >= 8) => (Color.FromRgb(255, 218, 121), Color.FromRgb(255, 235, 153)),
+            (0, _) => (Color.FromRgb(162, 155, 254), Color.FromRgb(116, 185, 255)),
 
-            // Cool colors
-            (1, >= 30) => new SolidColorBrush(Color.FromArgb(alpha, 13, 110, 253)), // Bright blue
-            (1, >= 20) => new SolidColorBrush(Color.FromArgb(alpha, 111, 66, 193)), // Purple
-            (1, >= 10) => new SolidColorBrush(Color.FromArgb(alpha, 214, 51, 132)), // Pink
-            (1, >= 5) => new SolidColorBrush(Color.FromArgb(alpha, 20, 164, 77)), // Teal
-            (1, _) => new SolidColorBrush(Color.FromArgb(alpha, 108, 117, 125)), // Gray
+            // Cool blues and purples
+            (1, >= 25) => (Color.FromRgb(72, 219, 251), Color.FromRgb(116, 185, 255)),
+            (1, >= 15) => (Color.FromRgb(162, 155, 254), Color.FromRgb(199, 146, 234)),
+            (1, >= 8) => (Color.FromRgb(199, 146, 234), Color.FromRgb(255, 154, 158)),
+            (1, _) => (Color.FromRgb(108, 92, 231), Color.FromRgb(162, 155, 254)),
 
-            // Nature colors
-            (2, >= 30) => new SolidColorBrush(Color.FromArgb(alpha, 25, 135, 84)), // Forest green
-            (2, >= 20) => new SolidColorBrush(Color.FromArgb(alpha, 13, 202, 240)), // Cyan
-            (2, >= 10) => new SolidColorBrush(Color.FromArgb(alpha, 102, 16, 242)), // Indigo
-            (2, >= 5) => new SolidColorBrush(Color.FromArgb(alpha, 255, 107, 107)), // Light red
-            (2, _) => new SolidColorBrush(Color.FromArgb(alpha, 134, 142, 150)), // Light gray
+            // Green nature colors
+            (2, >= 25) => (Color.FromRgb(85, 239, 196), Color.FromRgb(129, 236, 236)),
+            (2, >= 15) => (Color.FromRgb(129, 236, 236), Color.FromRgb(116, 185, 255)),
+            (2, >= 8) => (Color.FromRgb(223, 249, 251), Color.FromRgb(85, 239, 196)),
+            (2, _) => (Color.FromRgb(68, 189, 50), Color.FromRgb(85, 239, 196)),
 
-            // Muted colors
-            (3, >= 30) => new SolidColorBrush(Color.FromArgb(alpha, 108, 92, 231)), // Blue violet
-            (3, >= 20) => new SolidColorBrush(Color.FromArgb(alpha, 255, 154, 0)), // Amber
-            (3, >= 10) => new SolidColorBrush(Color.FromArgb(alpha, 156, 39, 176)), // Purple
-            (3, >= 5) => new SolidColorBrush(Color.FromArgb(alpha, 76, 175, 80)), // Light green
-            (3, _) => new SolidColorBrush(Color.FromArgb(alpha, 158, 158, 158)), // Medium gray
+            // Sunset colors
+            (3, >= 25) => (Color.FromRgb(255, 159, 67), Color.FromRgb(255, 107, 107)),
+            (3, >= 15) => (Color.FromRgb(255, 206, 84), Color.FromRgb(255, 159, 67)),
+            (3, >= 8) => (Color.FromRgb(255, 235, 153), Color.FromRgb(255, 206, 84)),
+            (3, _) => (Color.FromRgb(178, 190, 195), Color.FromRgb(129, 236, 236)),
 
-            _ => new SolidColorBrush(Color.FromArgb(alpha, 108, 117, 125))
+            // Ocean colors
+            (4, >= 25) => (Color.FromRgb(89, 98, 117), Color.FromRgb(116, 185, 255)),
+            (4, >= 15) => (Color.FromRgb(116, 185, 255), Color.FromRgb(72, 219, 251)),
+            (4, >= 8) => (Color.FromRgb(72, 219, 251), Color.FromRgb(85, 239, 196)),
+            (4, _) => (Color.FromRgb(116, 185, 255), Color.FromRgb(162, 155, 254)),
+
+            // Monochrome variants
+            _ => (Color.FromRgb(108, 117, 125), Color.FromRgb(173, 181, 189))
+        };
+
+        return new LinearGradientBrush
+        {
+            StartPoint = new Point(0, 0),
+            EndPoint = new Point(1, 1),
+            GradientStops =
+            [
+                new GradientStop(Color.FromArgb((byte)alpha, colors.Item1.R, colors.Item1.G, colors.Item1.B), 0.0),
+                new GradientStop(Color.FromArgb((byte)alpha, colors.Item2.R, colors.Item2.G, colors.Item2.B), 1.0)
+            ]
         };
     }
 
-    private static SolidColorBrush GetBorderColor(int depth)
+    private static SolidColorBrush GetBorderBrush(int depth)
     {
-        var alpha = (byte)Math.Max(50, 200 - depth * 40);
+        var alpha = (byte)Math.Max(30, 120 - depth * 20);
         return new SolidColorBrush(Color.FromArgb(alpha, 255, 255, 255));
     }
 
-    private static string CreateToolTip(DirectoryItemViewModel item)
+    private static FrameworkElement CreateToolTip(DirectoryItemViewModel item)
     {
-        var tooltip = $"📁 {item.DisplayName}\n" +
-                      $"💾 Size: {item.FormattedSize}\n" +
-                      $"📊 {item.PercentageOfParent:F1}% of parent\n" +
-                      $"📄 Files: {item.FileCount:N0}\n" +
-                      $"📁 Subdirectories: {item.DirectoryCount:N0}\n";
+        var tooltipContainer = new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(240, 45, 45, 48)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(150, 116, 185, 255)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(12),
+            Margin = new Thickness(0),
+            Effect = new DropShadowEffect
+            {
+                Color = Colors.Black,
+                ShadowDepth = 3,
+                BlurRadius = 10,
+                Opacity = 0.4
+            }
+        };
 
-        if (item.HasError) tooltip += $"\n⚠️ Error: {item.Error}";
+        var tooltipContent = new StackPanel();
 
-        return tooltip;
+        // Title
+        var title = new TextBlock
+        {
+            Text = $"📁 {item.DisplayName}",
+            FontWeight = FontWeights.Bold,
+            FontSize = 14,
+            Foreground = new SolidColorBrush(Color.FromRgb(255, 255, 255)),
+            Margin = new Thickness(0, 0, 0, 8)
+        };
+        tooltipContent.Children.Add(title);
+
+        // Stats
+        var stats = new[]
+        {
+            ($"💾 Size: {item.FormattedSize}", Color.FromRgb(116, 185, 255)),
+            ($"📊 {item.PercentageOfParent:F1}% of parent", Color.FromRgb(85, 239, 196)),
+            ($"📄 Files: {item.FileCount:N0}", Color.FromRgb(255, 206, 84)),
+            ($"📁 Subdirectories: {item.DirectoryCount:N0}", Color.FromRgb(255, 159, 67))
+        };
+
+        foreach (var (text, color) in stats)
+        {
+            var statBlock = new TextBlock
+            {
+                Text = text,
+                FontSize = 11,
+                Foreground = new SolidColorBrush(color),
+                Margin = new Thickness(0, 1, 0, 1)
+            };
+            tooltipContent.Children.Add(statBlock);
+        }
+
+        if (item.HasError)
+        {
+            var errorBlock = new TextBlock
+            {
+                Text = $"⚠️ Error: {item.Error}",
+                FontSize = 11,
+                Foreground = new SolidColorBrush(Color.FromRgb(255, 107, 107)),
+                Margin = new Thickness(0, 4, 0, 0)
+            };
+            tooltipContent.Children.Add(errorBlock);
+        }
+
+        tooltipContainer.Child = tooltipContent;
+        return tooltipContainer;
     }
 
-    // Keep existing treemap calculation methods
+    // Keep existing treemap calculation methods unchanged
     private List<(DirectoryItemViewModel Item, Rect Rect)> CalculateTreeMapRectangles(
         List<DirectoryItemViewModel> items, long totalSize, Rect area)
     {

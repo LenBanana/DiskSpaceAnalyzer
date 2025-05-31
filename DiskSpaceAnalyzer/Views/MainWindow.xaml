@@ -9,17 +9,30 @@
         xmlns:viewModels="clr-namespace:DiskSpaceAnalyzer.ViewModels"
         xmlns:md="http://materialdesigninxaml.net/winfx/xaml/themes"
         mc:Ignorable="d"
-        Title="Disk Space Analyzer"
-        Height="1000" Width="1500"
+        Title="Disk Space Analyzer Pro"
+        Height="1000" Width="1600"
         Background="{StaticResource PrimaryBackgroundBrush}"
         d:DataContext="{d:DesignInstance viewModels:MainViewModel, IsDesignTimeCreatable=True}"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen"
+        WindowStyle="SingleBorderWindow"
+        AllowsTransparency="False">
 
     <Window.Resources>
         <converters:SizeToColorConverter x:Key="SizeToColorConverter" />
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
         <converters:IndexToDepthConverter x:Key="IndexToDepthConverter" />
+
+        <!-- Storyboard for loading animation -->
+        <Storyboard x:Key="LoadingAnimation" RepeatBehavior="Forever">
+            <DoubleAnimation Storyboard.TargetName="LoadingEllipse"
+                           Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
+                           From="0" To="360" Duration="0:0:2"/>
+        </Storyboard>
     </Window.Resources>
+
+    <Window.Effect>
+        <DropShadowEffect Color="Black" ShadowDepth="5" BlurRadius="15" Opacity="0.3"/>
+    </Window.Effect>
 
     <Grid>
         <Grid.RowDefinitions>
@@ -29,10 +42,17 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Toolbar -->
-        <Border Grid.Row="0" Background="{StaticResource SecondaryBackgroundBrush}"
-                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
-            <Grid Margin="10">
+        <!-- Modern Header/Toolbar -->
+        <Border Grid.Row="0" Style="{StaticResource ModernCardStyle}" Margin="0,0,0,5" CornerRadius="0,0,12,12">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                    <GradientStop Color="#FF2D2D30" Offset="0"/>
+                    <GradientStop Color="#FF3E3E42" Offset="0.5"/>
+                    <GradientStop Color="#FF2D2D30" Offset="1"/>
+                </LinearGradientBrush>
+            </Border.Background>
+
+            <Grid Margin="20,16">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
@@ -42,53 +62,41 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-
-                <Button Grid.Column="0"
-                        Height="35"
+                <Button Grid.Column="1"
+                        Height="40"
                         Style="{StaticResource ModernButtonStyle}"
                         Command="{Binding SelectFolderCommand}">
                     <StackPanel Orientation="Horizontal">
-                        <md:PackIcon Kind="Folders" VerticalAlignment="Center"
-                                     Width="18" Height="18" />
-                        <TextBlock Text="Browse" Margin="6,0,0,0"
-                                   VerticalAlignment="Center" />
+                        <md:PackIcon Kind="FolderSearch" VerticalAlignment="Center" Width="18" Height="18" />
+                        <TextBlock Text="Browse Folder" Margin="8,0,0,0" VerticalAlignment="Center" />
                     </StackPanel>
                 </Button>
-                <Button Grid.Column="1"
-                        Height="35"
-                        Style="{StaticResource ModernButtonStyle}"
-                        Command="{Binding OpenCurrentDirectoryCommand}"
-                        Margin="5,0,0,0"
-                        ToolTip="Open current directory in File Explorer">
-                    <StackPanel Orientation="Horizontal">
-                        <md:PackIcon Kind="FolderOpen" VerticalAlignment="Center"
-                                      Width="18" Height="18" />
-                        <TextBlock Text="Open" Margin="6,0,0,0"
-                                   VerticalAlignment="Center" />
-                    </StackPanel>
-                </Button>
+
                 <TextBox Grid.Column="2"
-                         Height="35"
+                         Height="40"
                          Text="{Binding SelectedPath, UpdateSourceTrigger=PropertyChanged}"
                          IsReadOnly="True"
-                         Padding="3, 0"
                          Style="{StaticResource ModernTextBoxStyle}"
-                         Margin="10,0" />
+                         Padding="2 0"
+                         Margin="12,0" 
+                         FontFamily="Consolas"
+                         VerticalContentAlignment="Center"/>
+
                 <ToggleButton Grid.Column="3"
-                              Height="35"
-                              Content="Parallel Scan"
+                              Height="40"
+                              Content="⚡ Parallel Scan"
                               Style="{StaticResource ModernToggleButtonStyle}"
                               IsChecked="{Binding UseParallelProcessing}"
-                              Margin="5,0,0,0"
-                              ToolTip="Enable parallel scanning" />
+                              Margin="8,0"
+                              ToolTip="Enable high-performance parallel scanning" />
 
                 <ComboBox Grid.Column="4"
-                          Height="35"
-                          Width="120"
+                          Height="40"
+                          Width="140"
                           SelectedItem="{Binding SelectedScanMode}"
                           Style="{StaticResource ModernComboBoxStyle}"
                           ItemContainerStyle="{StaticResource ModernComboBoxItemStyle}"
-                          Margin="5,0">
+                          Margin="8,0">
                     <ComboBox.Items>
                         <models:ScanMode>TopLevel</models:ScanMode>
                         <models:ScanMode>Recursive</models:ScanMode>
@@ -96,173 +104,288 @@
                 </ComboBox>
 
                 <Button Grid.Column="5"
-                        Height="35"
-                        Content="Scan"
+                        Height="40"
                         Style="{StaticResource ModernButtonStyle}"
                         Command="{Binding StartScanCommand}"
-                        IsEnabled="{Binding IsScanning, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Invert}" />
+                        IsEnabled="{Binding IsScanning, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Invert}"
+                        Margin="8,0">
+                    <StackPanel Orientation="Horizontal">
+                        <md:PackIcon Kind="PlayCircle" VerticalAlignment="Center" Width="18" Height="18" />
+                        <TextBlock Text="Start Scan" Margin="8,0,0,0" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
 
                 <Button Grid.Column="6"
-                        Height="35"
-                        Content="Cancel"
+                        Height="40"
                         Style="{StaticResource ModernButtonStyle}"
                         Command="{Binding CancelScanCommand}"
-                        IsEnabled="{Binding IsScanning}" />
+                        IsEnabled="{Binding IsScanning}"
+                        Margin="8,0,0,0">
+                    <StackPanel Orientation="Horizontal">
+                        <md:PackIcon Kind="StopCircle" VerticalAlignment="Center" Width="18" Height="18" />
+                        <TextBlock Text="Cancel" Margin="8,0,0,0" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
             </Grid>
         </Border>
 
-        <!-- Main Content -->
-        <Grid Grid.Row="1" Margin="10">
+        <!-- Main Content Area -->
+        <Grid Grid.Row="1" Margin="5">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="2*" />
-                <ColumnDefinition Width="5" />
-                <ColumnDefinition Width="3*" />
+                <ColumnDefinition Width="400" />
+                <ColumnDefinition Width="8" />
+                <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <!-- Directory List -->
-            <Border Grid.Column="0"
-                    Background="{StaticResource SecondaryBackgroundBrush}"
-                    BorderBrush="{StaticResource BorderBrush}"
-                    BorderThickness="1"
-                    CornerRadius="4">
+            <!-- Left Panel - Directory List -->
+            <Border Grid.Column="0" Style="{StaticResource ModernCardStyle}">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
-                    <!-- Sort Controls -->
+                    <!-- Sort Controls Header -->
                     <Border Grid.Row="0"
                             Background="{StaticResource PrimaryBackgroundBrush}"
                             BorderBrush="{StaticResource BorderBrush}"
-                            BorderThickness="0,0,0,1">
-                        <StackPanel Orientation="Horizontal" Margin="10,5">
+                            BorderThickness="0,0,0,1"
+                            Height="60"
+                            CornerRadius="8,8,0,0"
+                            Padding="16,12">
+                        <StackPanel Orientation="Horizontal">
                             <md:PackIcon Kind="Sort"
-                                      Width="20" Height="20"
-                                      VerticalAlignment="Center"
-                                      Foreground="{StaticResource AccentBrush}" />
+                                         Width="20" Height="20"
+                                         VerticalAlignment="Center"
+                                         Foreground="{StaticResource AccentBrush}" />
+                            <TextBlock Text="Sort by:" 
+                                       Foreground="{StaticResource TextBrush}" 
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center" 
+                                       Margin="8,0,16,0"/>
+
                             <Button Content="Size"
                                     Style="{StaticResource ModernButtonStyle}"
                                     Command="{Binding ChangeSortModeCommand}"
                                     CommandParameter="{x:Static models:SortMode.Size}"
-                                    Margin="5,0" />
+                                    Height="32"
+                                    FontSize="11"
+                                    Margin="0,0,8,0" />
                             <Button Content="Name"
                                     Style="{StaticResource ModernButtonStyle}"
                                     Command="{Binding ChangeSortModeCommand}"
                                     CommandParameter="{x:Static models:SortMode.Name}"
-                                    Margin="5,0" />
+                                    Height="32"
+                                    FontSize="11"
+                                    Margin="0,0,8,0" />
                             <Button Content="Modified"
                                     Style="{StaticResource ModernButtonStyle}"
                                     Command="{Binding ChangeSortModeCommand}"
                                     CommandParameter="{x:Static models:SortMode.LastModified}"
-                                    Margin="5,0" />
+                                    Height="32"
+                                    FontSize="11"
+                                    Margin="0" />
                         </StackPanel>
                     </Border>
 
-                    <!-- Directory Items -->
-                    <ListView Grid.Row="1"
-                              ItemsSource="{Binding SelectedItems}"
-                              SelectedItem="{Binding SelectedDirectory}"
-                              Background="Transparent"
-                              BorderThickness="0"
-                              Foreground="{StaticResource TextBrush}"
-                              HorizontalContentAlignment="Stretch">
-                        <ListView.ItemTemplate>
-                            <DataTemplate DataType="{x:Type viewModels:DirectoryItemViewModel}">
-                                <Grid Margin="5">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                    </Grid.RowDefinitions>
+                    <!-- Directory List -->
+                    <ScrollViewer Grid.Row="1" 
+                                  Background="Transparent"
+                                  Margin="8"
+                                  VerticalScrollBarVisibility="Hidden"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding SelectedItems}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type viewModels:DirectoryItemViewModel}">
+                                    <Border Background="Transparent"
+                                            BorderBrush="{StaticResource BorderBrush}"
+                                            BorderThickness="0,0,0,1"
+                                            Padding="12,16"
+                                            Margin="0,0,0,2"
+                                            Cursor="Hand">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Style.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter Property="Background">
+                                                            <Setter.Value>
+                                                                <SolidColorBrush Color="#FF3E3E42" Opacity="0.5"/>
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                    </Trigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
 
-                                    <TextBlock Grid.Row="0" Grid.Column="0"
-                                               Text="{Binding DisplayName}"
-                                               FontWeight="Bold"
-                                               Foreground="{StaticResource TextBrush}" />
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
 
-                                    <TextBlock Grid.Row="0" Grid.Column="1"
-                                               Text="{Binding FormattedSize}"
-                                               FontWeight="Bold"
-                                               Foreground="{StaticResource AccentBrush}" />
+                                            <!-- Folder Icon and Name -->
+                                            <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal">
+                                                <md:PackIcon Kind="Folder" 
+                                                             Foreground="{StaticResource AccentBrush}" 
+                                                             Width="18" Height="18" 
+                                                             VerticalAlignment="Center" 
+                                                             Margin="0,0,8,0"/>
+                                                <TextBlock Text="{Binding DisplayName}"
+                                                           FontWeight="SemiBold"
+                                                           FontSize="14"
+                                                           Foreground="{StaticResource TextBrush}"
+                                                           TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
 
-                                    <TextBlock Grid.Row="1" Grid.Column="0"
-                                               Text="{Binding FileCount, StringFormat='{}{0:N0} files'}"
-                                               FontSize="11"
-                                               Foreground="{StaticResource SecondaryTextBrush}" />
+                                            <!-- Size -->
+                                            <TextBlock Grid.Row="0" Grid.Column="1"
+                                                       Text="{Binding FormattedSize}"
+                                                       FontWeight="Bold"
+                                                       FontSize="14"
+                                                       Foreground="{StaticResource AccentBrush}"
+                                                       HorizontalAlignment="Right" />
 
-                                    <TextBlock Grid.Row="1" Grid.Column="1"
-                                               Text="{Binding PercentageOfParent, StringFormat='{}{0:F1}%', Mode=OneWay}"
-                                               FontSize="11"
-                                               Foreground="{StaticResource SecondaryTextBrush}" />
+                                            <!-- File Count -->
+                                            <TextBlock Grid.Row="1" Grid.Column="0"
+                                                       Text="{Binding FileCount, StringFormat='{}{0:N0} files'}"
+                                                       FontSize="12"
+                                                       Foreground="{StaticResource SecondaryTextBrush}"
+                                                       Margin="26,4,0,0" />
 
-                                    <ProgressBar Grid.Row="2" Grid.ColumnSpan="2" Grid.Column="0"
-                                                 Value="{Binding PercentageOfParent, Mode=OneWay}"
-                                                 Maximum="100"
-                                                 Height="4"
-                                                 Background="#FF404040"
-                                                 Foreground="{Binding PercentageOfParent, Converter={StaticResource SizeToColorConverter}}"
-                                                 Margin="0,2,0,0" />
-                                </Grid>
-                            </DataTemplate>
-                        </ListView.ItemTemplate>
-                    </ListView>
+                                            <!-- Percentage -->
+                                            <TextBlock Grid.Row="1" Grid.Column="1"
+                                                       Text="{Binding PercentageOfParent, StringFormat='{}{0:F1}%', Mode=OneWay}"
+                                                       FontSize="12"
+                                                       Foreground="{StaticResource SecondaryTextBrush}"
+                                                       HorizontalAlignment="Right"
+                                                       Margin="0,4,0,0" />
+
+                                            <!-- Progress Bar -->
+                                            <ProgressBar Grid.Row="2" Grid.ColumnSpan="2"
+                                                         Value="{Binding PercentageOfParent, Mode=OneWay}"
+                                                         Maximum="100"
+                                                         Style="{StaticResource ModernProgressBarStyle}"
+                                                         Margin="26,8,0,0" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
                 </Grid>
             </Border>
 
+            <!-- Splitter -->
             <GridSplitter Grid.Column="1"
-                          Width="5"
+                          Width="8"
                           HorizontalAlignment="Stretch"
-                          Background="{StaticResource BorderBrush}" />
+                          Background="Transparent" />
 
-            <!-- TreeMap Visualization -->
-            <Border Grid.Column="2"
-                    Background="{StaticResource SecondaryBackgroundBrush}"
-                    BorderBrush="{StaticResource BorderBrush}"
-                    BorderThickness="1"
-                    CornerRadius="4">
+            <!-- Right Panel - TreeMap -->
+            <Border Grid.Column="2" Style="{StaticResource ModernCardStyle}">
                 <Grid>
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
-                    <controls:TreeMapControl Grid.Row="0"
+
+                    <!-- TreeMap Header -->
+                    <Border Grid.Row="0"
+                            Background="{StaticResource PrimaryBackgroundBrush}"
+                            BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="0,0,0,1"
+                            CornerRadius="8,8,0,0"
+                            Height="60"
+                            Padding="16,12">
+                        <StackPanel Orientation="Horizontal">
+                            <md:PackIcon Kind="Tree"
+                                         Width="20" Height="20"
+                                         VerticalAlignment="Center"
+                                         Foreground="{StaticResource AccentBrush}" />
+                            <TextBlock Text="Visual Disk Map" 
+                                       Foreground="{StaticResource TextBrush}" 
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center" 
+                                       Margin="8,0,16,0"/>
+                            <TextBlock Text="Click rectangles to navigate • Right-click to go back" 
+                                       Foreground="{StaticResource SecondaryTextBrush}" 
+                                       FontSize="11"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- TreeMap Control -->
+                    <controls:TreeMapControl Grid.Row="1"
                                              Items="{Binding DirectoryItems}"
                                              CurrentRootChanged="TreeMapControl_CurrentRootChanged"
-                                             Margin="5" />
+                                             Margin="8" />
                 </Grid>
             </Border>
         </Grid>
 
-        <!-- Progress -->
-        <Border Grid.Row="2" Background="{StaticResource SecondaryBackgroundBrush}"
-                Visibility="{Binding IsScanning, Converter={StaticResource BoolToVisibilityConverter}}">
-            <Grid Margin="10">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
+        <!-- Loading/Progress Section -->
+        <Border Grid.Row="2" 
+                Style="{StaticResource ModernCardStyle}"
+                Visibility="{Binding IsScanning, Converter={StaticResource BoolToVisibilityConverter}}"
+                Margin="10 5"
+                CornerRadius="12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
 
-                <TextBlock Grid.Row="0"
-                           Text="{Binding ScanProgress}"
-                           Foreground="{StaticResource TextBrush}"
-                           FontSize="12" />
+                <!-- Loading Animation -->
+                <Ellipse x:Name="LoadingEllipse" 
+                         Grid.Column="0"
+                         Width="24" Height="24" 
+                         Margin="0,0,16,0"
+                         VerticalAlignment="Center">
+                    <Ellipse.Fill>
+                        <LinearGradientBrush>
+                            <GradientStop Color="{StaticResource AccentColor}" Offset="0"/>
+                            <GradientStop Color="Transparent" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Ellipse.Fill>
+                    <Ellipse.RenderTransform>
+                        <RotateTransform CenterX="12" CenterY="12"/>
+                    </Ellipse.RenderTransform>
+                </Ellipse>
 
-                <ProgressBar Grid.Row="1"
-                             IsIndeterminate="True"
-                             Margin="0,5,0,0" />
+                <StackPanel Grid.Column="1">
+                    <TextBlock Text="{Binding ScanProgress}"
+                               Foreground="{StaticResource TextBrush}"
+                               FontSize="14"
+                               FontWeight="Medium" />
+
+                    <ProgressBar IsIndeterminate="True"
+                                 Style="{StaticResource ModernProgressBarStyle}"
+                                 Margin="0,8,0,0"
+                                 Height="8" />
+                </StackPanel>
             </Grid>
+
+            <!-- Trigger loading animation -->
+            <Border.Triggers>
+                <EventTrigger RoutedEvent="Border.Loaded">
+                    <BeginStoryboard Storyboard="{StaticResource LoadingAnimation}"/>
+                </EventTrigger>
+            </Border.Triggers>
         </Border>
 
         <!-- Status Bar -->
         <Border Grid.Row="3"
-                Background="{StaticResource SecondaryBackgroundBrush}"
-                BorderBrush="{StaticResource BorderBrush}"
-                BorderThickness="0,1,0,0">
-            <Grid Margin="10,5">
+                Style="{StaticResource ModernCardStyle}"
+                Margin="10 5"
+                CornerRadius="12"
+                Padding="20,12">
+            <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
@@ -271,13 +394,20 @@
                 <TextBlock Grid.Column="0"
                            Text="{Binding ScanSummary}"
                            Foreground="{StaticResource SecondaryTextBrush}"
-                           FontSize="11" />
+                           FontSize="12" />
 
-                <TextBlock Grid.Column="1"
-                           Text="{Binding ScanResult.ErrorCount, StringFormat='Errors: {0}', FallbackValue=''}"
-                           Foreground="{StaticResource SecondaryTextBrush}"
-                           FontSize="11"
-                           Visibility="{Binding ScanResult.ErrorCount, FallbackValue='', Converter={StaticResource BoolToVisibilityConverter}}" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal"
+                           Visibility="{Binding ScanResult.ErrorCount, FallbackValue='', Converter={StaticResource BoolToVisibilityConverter}}">
+                    <md:PackIcon Kind="AlertCircle" 
+                                 Foreground="#FFFF4444" 
+                                 Width="16" Height="16" 
+                                 VerticalAlignment="Center" 
+                                 Margin="0,0,4,0"/>
+                    <TextBlock Text="{Binding ScanResult.ErrorCount, StringFormat='Errors: {0}', FallbackValue=''}"
+                               Foreground="#FFFF4444"
+                               FontSize="12"
+                               VerticalAlignment="Center" />
+                </StackPanel>
             </Grid>
         </Border>
     </Grid>
