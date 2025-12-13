@@ -9,6 +9,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiskSpaceAnalyzer.Models;
 using DiskSpaceAnalyzer.Services;
+using DiskSpaceAnalyzer.Views.Robocopy;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace DiskSpaceAnalyzer.ViewModels;
 
@@ -17,6 +19,7 @@ public partial class MainViewModel : BaseViewModel
     private readonly IDialogService _dialogService;
     private readonly FileSystemService _fileSystemService;
     private readonly ParallelFileSystemService _parallelFileSystemService;
+    private readonly IServiceProvider _serviceProvider;
     private CancellationTokenSource? _cancellationTokenSource;
 
     private IFileSystemService _currentFileSystemService;
@@ -46,18 +49,26 @@ public partial class MainViewModel : BaseViewModel
     [ObservableProperty] private bool _useParallelProcessing = true;
 
     public MainViewModel(FileSystemService fileSystemService, ParallelFileSystemService parallelFileSystemService,
-        IDialogService dialogService)
+        IDialogService dialogService, IServiceProvider serviceProvider)
     {
         _fileSystemService = fileSystemService;
         _parallelFileSystemService = parallelFileSystemService;
         _currentFileSystemService = parallelFileSystemService;
         _dialogService = dialogService;
+        _serviceProvider = serviceProvider;
         DirectoryItems = [];
         SelectedItems = [];
         AvailableDrives = [];
         ScanErrors = [];
 
         LoadAvailableDrives();
+    }
+    
+    [RelayCommand]
+    private void OpenRobocopy()
+    {
+        var window = _serviceProvider.GetRequiredService<RobocopyWindow>();
+        window.Show();
     }
 
     public ObservableCollection<DirectoryItemViewModel> DirectoryItems { get; }

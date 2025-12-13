@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Effects;
 using System.Windows.Shapes;
 using DiskSpaceAnalyzer.ViewModels;
 
@@ -349,8 +350,7 @@ public class TreeMapControl : Canvas
             Text = item.FormattedSize,
             Foreground = new SolidColorBrush(Color.FromArgb(200, 255, 255, 255)),
             FontSize = Math.Max(7, fontSize - 2),
-            Width = rect.Width - 4,
-            TextAlignment = TextAlignment.Right,
+            TextAlignment = TextAlignment.Left,
             Margin = new Thickness(2, 0, 4, 2)
         };
 
@@ -375,48 +375,44 @@ public class TreeMapControl : Canvas
         DirectoryClicked?.Invoke(this, directory);
     }
 
-    // Color scheme that considers depth
     private static SolidColorBrush GetColorForDepthAndSize(DirectoryItemViewModel item, int depth)
     {
-        var baseAlpha = Math.Max(200, 255 - depth * 12);
+        var baseAlpha = Math.Max(180, 240 - depth * 10);
         var alpha = (byte)baseAlpha;
         var percentage = item.PercentageOfParent;
-
-        // Modern dark theme color palette with better contrast and visual hierarchy
         var colorVariant = (int)(item.Size % 4);
 
         return (colorVariant, percentage) switch
         {
-            // Heat map approach - warmer colors for larger items, cooler for smaller
-            // Variant 0: Red-Orange spectrum (most attention-grabbing)
-            (0, >= 30) => new SolidColorBrush(Color.FromArgb(alpha, 219, 68, 68)), // Bright red
-            (0, >= 20) => new SolidColorBrush(Color.FromArgb(alpha, 249, 115, 22)), // Orange
-            (0, >= 10) => new SolidColorBrush(Color.FromArgb(alpha, 245, 158, 11)), // Amber
-            (0, >= 5) => new SolidColorBrush(Color.FromArgb(alpha, 234, 179, 8)), // Yellow
-            (0, _) => new SolidColorBrush(Color.FromArgb(alpha, 132, 204, 22)), // Lime
+            // Variant 0: Coral/Orange spectrum (warm attention colors)
+            (0, >= 30) => new SolidColorBrush(Color.FromArgb(alpha, 255, 125, 95)), // Vibrant coral
+            (0, >= 20) => new SolidColorBrush(Color.FromArgb(alpha, 240, 140, 75)), // Warm orange
+            (0, >= 10) => new SolidColorBrush(Color.FromArgb(alpha, 220, 155, 85)), // Peach
+            (0, >= 5) => new SolidColorBrush(Color.FromArgb(alpha, 190, 135, 95)), // Muted orange
+            (0, _) => new SolidColorBrush(Color.FromArgb(alpha, 160, 115, 85)), // Soft amber
 
-            // Variant 1: Blue-Purple spectrum (professional)
-            (1, >= 30) => new SolidColorBrush(Color.FromArgb(alpha, 99, 102, 241)), // Indigo
-            (1, >= 20) => new SolidColorBrush(Color.FromArgb(alpha, 139, 92, 246)), // Violet
-            (1, >= 10) => new SolidColorBrush(Color.FromArgb(alpha, 168, 85, 247)), // Purple
-            (1, >= 5) => new SolidColorBrush(Color.FromArgb(alpha, 59, 130, 246)), // Blue
-            (1, _) => new SolidColorBrush(Color.FromArgb(alpha, 14, 165, 233)), // Sky blue
+            // Variant 1: Electric Blues & Cyans (cool tech colors)
+            (1, >= 30) => new SolidColorBrush(Color.FromArgb(alpha, 100, 180, 255)), // Bright sky blue
+            (1, >= 20) => new SolidColorBrush(Color.FromArgb(alpha, 120, 160, 240)), // Electric blue
+            (1, >= 10) => new SolidColorBrush(Color.FromArgb(alpha, 140, 170, 220)), // Soft blue
+            (1, >= 5) => new SolidColorBrush(Color.FromArgb(alpha, 130, 150, 200)), // Muted blue
+            (1, _) => new SolidColorBrush(Color.FromArgb(alpha, 120, 140, 180)), // Steel blue
 
-            // Variant 2: Teal-Green spectrum (calm, natural)
-            (2, >= 30) => new SolidColorBrush(Color.FromArgb(alpha, 20, 184, 166)), // Teal
-            (2, >= 20) => new SolidColorBrush(Color.FromArgb(alpha, 16, 185, 129)), // Emerald
-            (2, >= 10) => new SolidColorBrush(Color.FromArgb(alpha, 34, 197, 94)), // Green
-            (2, >= 5) => new SolidColorBrush(Color.FromArgb(alpha, 101, 163, 13)), // Lime green
-            (2, _) => new SolidColorBrush(Color.FromArgb(alpha, 6, 182, 212)), // Cyan
+            // Variant 2: Emerald & Mint Greens (fresh, modern)
+            (2, >= 30) => new SolidColorBrush(Color.FromArgb(alpha, 85, 220, 170)), // Bright mint
+            (2, >= 20) => new SolidColorBrush(Color.FromArgb(alpha, 100, 200, 160)), // Emerald
+            (2, >= 10) => new SolidColorBrush(Color.FromArgb(alpha, 115, 185, 150)), // Soft jade
+            (2, >= 5) => new SolidColorBrush(Color.FromArgb(alpha, 125, 165, 140)), // Sage green
+            (2, _) => new SolidColorBrush(Color.FromArgb(alpha, 115, 145, 130)), // Muted teal
 
-            // Variant 3: Pink-Rose spectrum (distinctive)
-            (3, >= 30) => new SolidColorBrush(Color.FromArgb(alpha, 236, 72, 153)), // Pink
-            (3, >= 20) => new SolidColorBrush(Color.FromArgb(alpha, 251, 113, 133)), // Rose
-            (3, >= 10) => new SolidColorBrush(Color.FromArgb(alpha, 244, 114, 182)), // Fuchsia
-            (3, >= 5) => new SolidColorBrush(Color.FromArgb(alpha, 192, 132, 252)), // Light purple
-            (3, _) => new SolidColorBrush(Color.FromArgb(alpha, 156, 163, 175)), // Cool gray
+            // Variant 3: Purple & Magenta (creative, distinctive)
+            (3, >= 30) => new SolidColorBrush(Color.FromArgb(alpha, 220, 120, 220)), // Bright magenta
+            (3, >= 20) => new SolidColorBrush(Color.FromArgb(alpha, 200, 130, 200)), // Orchid
+            (3, >= 10) => new SolidColorBrush(Color.FromArgb(alpha, 180, 140, 185)), // Soft lavender
+            (3, >= 5) => new SolidColorBrush(Color.FromArgb(alpha, 160, 125, 170)), // Muted purple
+            (3, _) => new SolidColorBrush(Color.FromArgb(alpha, 140, 115, 150)), // Dusty plum
 
-            _ => new SolidColorBrush(Color.FromArgb(alpha, 107, 114, 128)) // Neutral gray
+            _ => new SolidColorBrush(Color.FromArgb(alpha, 140, 140, 140)) // Neutral light gray
         };
     }
 
@@ -426,17 +422,71 @@ public class TreeMapControl : Canvas
         return new SolidColorBrush(Color.FromArgb(alpha, 156, 163, 175));
     }
 
-    private static string CreateToolTip(DirectoryItemViewModel item)
+    private static ToolTip CreateToolTip(DirectoryItemViewModel item)
     {
-        var tooltip = $"📁 {item.DisplayName}\n" +
-                      $"💾 Size: {item.FormattedSize}\n" +
-                      $"📊 {item.PercentageOfParent:F1}% of parent\n" +
-                      $"📄 Files: {item.FileCount:N0}\n" +
-                      $"📁 Subdirectories: {item.DirectoryCount:N0}\n";
+        var tooltipContainer = new ToolTip
+        {
+            Background = new SolidColorBrush(Color.FromArgb(240, 45, 45, 48)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(150, 116, 185, 255)),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(12),
+            Effect = new DropShadowEffect
+            {
+                Color = Colors.Black,
+                ShadowDepth = 3,
+                BlurRadius = 10,
+                Opacity = 0.4
+            }
+        };
 
-        if (item.HasError) tooltip += $"\n⚠️ Error: {item.Error}";
+        var tooltipContent = new StackPanel();
 
-        return tooltip;
+        // Title
+        var title = new TextBlock
+        {
+            Text = $"📁 {item.DisplayName}",
+            FontWeight = FontWeights.Bold,
+            FontSize = 14,
+            Foreground = new SolidColorBrush(Color.FromRgb(255, 255, 255)),
+            Margin = new Thickness(0, 0, 0, 8)
+        };
+        tooltipContent.Children.Add(title);
+
+        // Stats
+        var stats = new[]
+        {
+            ($"💾 Size: {item.FormattedSize}", Color.FromRgb(116, 185, 255)),
+            ($"📊 {item.PercentageOfParent:F1}% of parent", Color.FromRgb(85, 239, 196)),
+            ($"📄 Files: {item.FileCount:N0}", Color.FromRgb(255, 206, 84)),
+            ($"📁 Subdirectories: {item.DirectoryCount:N0}", Color.FromRgb(255, 159, 67))
+        };
+
+        foreach (var (text, color) in stats)
+        {
+            var statBlock = new TextBlock
+            {
+                Text = text,
+                FontSize = 11,
+                Foreground = new SolidColorBrush(color),
+                Margin = new Thickness(0, 1, 0, 1)
+            };
+            tooltipContent.Children.Add(statBlock);
+        }
+
+        if (item.HasError)
+        {
+            var errorBlock = new TextBlock
+            {
+                Text = $"⚠️ Error: {item.Error}",
+                FontSize = 11,
+                Foreground = new SolidColorBrush(Color.FromRgb(255, 107, 107)),
+                Margin = new Thickness(0, 4, 0, 0)
+            };
+            tooltipContent.Children.Add(errorBlock);
+        }
+
+        tooltipContainer.Content = tooltipContent;
+        return tooltipContainer;
     }
 
     // Keep existing treemap calculation methods

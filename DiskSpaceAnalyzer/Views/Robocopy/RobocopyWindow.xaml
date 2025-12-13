@@ -1,0 +1,787 @@
+<Window x:Class="DiskSpaceAnalyzer.Views.Robocopy.RobocopyWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:viewModels="clr-namespace:DiskSpaceAnalyzer.ViewModels"
+        xmlns:models="clr-namespace:DiskSpaceAnalyzer.Models.Robocopy"
+        xmlns:converters="clr-namespace:DiskSpaceAnalyzer.Converters"
+        mc:Ignorable="d"
+        Title="Robocopy Tool"
+        Height="950" Width="900"
+        MinHeight="550" MinWidth="750"
+        WindowStartupLocation="CenterScreen"
+        d:DataContext="{d:DesignInstance viewModels:RobocopyViewModel, IsDesignTimeCreatable=False}">
+    
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/Styles/RobocopyStyles.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            
+            <converters:BytesToSizeConverter x:Key="ByteFormatter"/>
+            <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        </ResourceDictionary>
+    </Window.Resources>
+    
+    <Window.Background>
+        <SolidColorBrush Color="#FF1E1E1E"/>
+    </Window.Background>
+    
+    <Grid Margin="15">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>   <!-- Header -->
+            <RowDefinition Height="Auto"/>   <!-- Configuration -->
+            <RowDefinition Height="Auto"/>   <!-- Command Preview -->
+            <RowDefinition Height="Auto"/>   <!-- Progress -->
+            <RowDefinition Height="*"/>      <!-- Log Viewer -->
+            <RowDefinition Height="Auto"/>   <!-- Errors -->
+            <RowDefinition Height="Auto"/>   <!-- Control Buttons -->
+        </Grid.RowDefinitions>
+        
+        <!-- Header with Status Indicator -->
+        <Grid Grid.Row="0" Margin="0,0,0,15">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            
+            <TextBlock Grid.Column="0"
+                       Text="Robocopy Tool"
+                       FontSize="22"
+                       FontWeight="Bold"
+                       Foreground="White"
+                       VerticalAlignment="Center"/>
+        </Grid>
+        
+        <!-- Configuration Section -->
+        <Border Grid.Row="1" Style="{StaticResource RobocopyCardStyle}">
+            <StackPanel>
+                <!-- Paths Section -->
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                    <TextBlock Text="PATHS" 
+                              FontSize="11" 
+                              FontWeight="Bold" 
+                              Foreground="#FF888888"/>
+                    <Border Style="{StaticResource RobocopyInfoIconStyle}"
+                           ToolTip="Select the source folder to copy from and the destination folder to copy to. Click 'Open' to view folders in File Explorer.">
+                        <TextBlock Style="{StaticResource RobocopyInfoIconTextStyle}"/>
+                    </Border>
+                </StackPanel>
+                
+                <!-- Source Path -->
+                <Grid Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="80"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    
+                    <TextBlock Grid.Column="0" 
+                               Text="Source"
+                               VerticalAlignment="Center"
+                               FontSize="13"
+                               Foreground="#FFE0E0E0"/>
+                    
+                    <Border Grid.Column="1"
+                            Background="#FF2D2D30"
+                            BorderBrush="#FF555555"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="10,8"
+                            Margin="0,0,8,0">
+                        <TextBlock Text="{Binding SourcePath, TargetNullValue='Click Browse to select source folder...'}"
+                                  FontSize="12"
+                                  Foreground="#FFE0E0E0"
+                                  TextTrimming="CharacterEllipsis"
+                                  VerticalAlignment="Center"
+                                  ToolTip="{Binding SourcePath}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SourcePath}" Value="">
+                                            <Setter Property="Foreground" Value="#FF888888"/>
+                                            <Setter Property="FontStyle" Value="Italic"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Border>
+                    
+                    <Button Grid.Column="2"
+                            Content="Browse"
+                            Command="{Binding BrowseSourceCommand}"
+                            Style="{StaticResource RobocopyButtonStyle}"
+                            Padding="12,6"
+                            FontSize="12"
+                            Margin="0,0,5,0"/>
+                    
+                    <Button Grid.Column="3"
+                            Content="Open"
+                            Command="{Binding OpenSourceInExplorerCommand}"
+                            Style="{StaticResource RobocopySecondaryButtonStyle}"
+                            Padding="12,6"
+                            FontSize="12"
+                            ToolTip="Open in File Explorer"/>
+                </Grid>
+                
+                <!-- Destination Path -->
+                <Grid Margin="0,0,0,15">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="80"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    
+                    <TextBlock Grid.Column="0" 
+                               Text="Destination"
+                               VerticalAlignment="Center"
+                               FontSize="13"
+                               Foreground="#FFE0E0E0"/>
+                    
+                    <Border Grid.Column="1"
+                            Background="#FF2D2D30"
+                            BorderBrush="#FF555555"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="10,8"
+                            Margin="0,0,8,0">
+                        <TextBlock Text="{Binding DestinationPath, TargetNullValue='Click Browse to select destination folder...'}"
+                                  FontSize="12"
+                                  Foreground="#FFE0E0E0"
+                                  TextTrimming="CharacterEllipsis"
+                                  VerticalAlignment="Center"
+                                  ToolTip="{Binding DestinationPath}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DestinationPath}" Value="">
+                                            <Setter Property="Foreground" Value="#FF888888"/>
+                                            <Setter Property="FontStyle" Value="Italic"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Border>
+                    
+                    <Button Grid.Column="2"
+                            Content="Browse"
+                            Command="{Binding BrowseDestinationCommand}"
+                            Style="{StaticResource RobocopyButtonStyle}"
+                            Padding="12,6"
+                            FontSize="12"
+                            Margin="0,0,5,0"/>
+                    
+                    <Button Grid.Column="3"
+                            Content="Open"
+                            Command="{Binding OpenDestinationInExplorerCommand}"
+                            Style="{StaticResource RobocopySecondaryButtonStyle}"
+                            Padding="12,6"
+                            FontSize="12"
+                            ToolTip="Open in File Explorer"/>
+                </Grid>
+                
+                <Separator Background="#FF555555" Margin="0,0,0,15"/>
+                
+                <!-- Preset and Options -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    
+                    <!-- Left Column: Preset -->
+                    <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,15,0">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                            <TextBlock Text="COPY MODE" 
+                                      FontSize="11" 
+                                      FontWeight="Bold" 
+                                      Foreground="#FF888888"/>
+                            <Border Style="{StaticResource RobocopyInfoIconStyle}"
+                                   ToolTip="Choose a preset configuration for common copy scenarios. Each preset automatically configures the appropriate options below.">
+                                <TextBlock Style="{StaticResource RobocopyInfoIconTextStyle}"/>
+                            </Border>
+                        </StackPanel>
+                        
+                        <ComboBox SelectedItem="{Binding SelectedPreset}"
+                                  Style="{StaticResource RobocopyComboBoxStyle}"
+                                  Margin="0,0,0,8">
+                            <ComboBox.Items>
+                                <models:RobocopyPreset>Copy</models:RobocopyPreset>
+                                <models:RobocopyPreset>Sync</models:RobocopyPreset>
+                                <models:RobocopyPreset>Mirror</models:RobocopyPreset>
+                                <models:RobocopyPreset>Backup</models:RobocopyPreset>
+                                <models:RobocopyPreset>Custom</models:RobocopyPreset>
+                            </ComboBox.Items>
+                        </ComboBox>
+                        
+                        <TextBlock FontSize="11" 
+                                  Foreground="#FFA0A0A0" 
+                                  TextWrapping="Wrap"
+                                  LineHeight="16">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="Basic copy with subdirectories"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedPreset}" Value="Sync">
+                                            <Setter Property="Text" Value="Synchronize: copy all including empty directories"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding SelectedPreset}" Value="Mirror">
+                                            <Setter Property="Text" Value="⚠️ Mirror: copies and DELETES extra files at destination"/>
+                                            <Setter Property="Foreground" Value="#FFFF9800"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding SelectedPreset}" Value="Backup">
+                                            <Setter Property="Text" Value="Backup: copy with security info and timestamps"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding SelectedPreset}" Value="Custom">
+                                            <Setter Property="Text" Value="Custom: manually configure all options"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                    
+                    <!-- Right Column: Performance -->
+                    <StackPanel Grid.Row="0" Grid.Column="1">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                            <TextBlock Text="PERFORMANCE" 
+                                      FontSize="11" 
+                                      FontWeight="Bold" 
+                                      Foreground="#FF888888"/>
+                            <Border Style="{StaticResource RobocopyInfoIconStyle}"
+                                   ToolTip="Configure performance settings to optimize copy speed. More threads can improve speed when copying many files.">
+                                <TextBlock Style="{StaticResource RobocopyInfoIconTextStyle}"/>
+                            </Border>
+                        </StackPanel>
+                        
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                            <CheckBox Content="Multi-threaded copying"
+                                      IsChecked="{Binding UseMultithreading}"
+                                      Style="{StaticResource RobocopyCheckBoxStyle}"/>
+                            <Border Style="{StaticResource RobocopyInfoIconStyle}"
+                                   ToolTip="Use multiple threads to copy files in parallel. Significantly faster when copying many small files. Requires Windows Server 2008 R2/Windows 7 or newer.">
+                                <TextBlock Style="{StaticResource RobocopyInfoIconTextStyle}"/>
+                            </Border>
+                        </StackPanel>
+                        
+                        <Grid Margin="0,0,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="80"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <TextBlock Grid.Column="0"
+                                      Text="Threads" 
+                                      VerticalAlignment="Center"
+                                      FontSize="12"
+                                      Foreground="#FFA0A0A0"
+                                      Margin="0,0,6,0"/>
+                            
+                            <Border Grid.Column="1"
+                                   Style="{StaticResource RobocopyInfoIconStyle}"
+                                   Margin="0,0,10,0"
+                                   ToolTip="Number of simultaneous copy operations. Higher values = faster for many small files but may slow down for large files. Range: 1-128. Sweet spot: 8-16.">
+                                <TextBlock Style="{StaticResource RobocopyInfoIconTextStyle}"/>
+                            </Border>
+                            
+                            <TextBox Grid.Column="2"
+                                    Text="{Binding ThreadCount, UpdateSourceTrigger=PropertyChanged}"
+                                    Style="{StaticResource RobocopyTextBoxStyle}"
+                                    IsEnabled="{Binding UseMultithreading}"
+                                    HorizontalContentAlignment="Center"
+                                    FontWeight="Bold"/>
+                            
+                            <TextBlock Grid.Column="3"
+                                      Text="(1-128, recommended: 8-16)"
+                                      FontSize="10"
+                                      Foreground="#FF888888"
+                                      VerticalAlignment="Center"
+                                      Margin="10,0,0,0"/>
+                        </Grid>
+                    </StackPanel>
+                    
+                    <!-- File Options spanning both columns -->
+                    <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,15,0,0">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                            <TextBlock Text="FILE OPTIONS" 
+                                      FontSize="11" 
+                                      FontWeight="Bold" 
+                                      Foreground="#FF888888"/>
+                            <Border Style="{StaticResource RobocopyInfoIconStyle}"
+                                   ToolTip="Control which files and folders are copied and how they are processed.">
+                                <TextBlock Style="{StaticResource RobocopyInfoIconTextStyle}"/>
+                            </Border>
+                        </StackPanel>
+                        
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <!-- Column 0: Copy subdirectories -->
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,0,15,0">
+                                <CheckBox Content="Copy subdirectories"
+                                          IsChecked="{Binding CopySubdirectories}"
+                                          Style="{StaticResource RobocopyCheckBoxStyle}"/>
+                                <Border Style="{StaticResource RobocopyInfoIconStyle}"
+                                       ToolTip="Include all subdirectories in the copy operation. When disabled, only files in the root source folder are copied.">
+                                    <TextBlock Style="{StaticResource RobocopyInfoIconTextStyle}"/>
+                                </Border>
+                            </StackPanel>
+                            
+                            <!-- Column 1: Mirror mode -->
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,0,15,0">
+                                <CheckBox IsChecked="{Binding MirrorMode}">
+                                    <CheckBox.Style>
+                                        <Style TargetType="CheckBox" BasedOn="{StaticResource RobocopyCheckBoxStyle}">
+                                            <Setter Property="Content" Value="Mirror mode"/>
+                                            <Style.Triggers>
+                                                <Trigger Property="IsChecked" Value="True">
+                                                    <Setter Property="Content" Value="⚠️ Mirror mode"/>
+                                                    <Setter Property="Foreground" Value="#FFFF9800"/>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </CheckBox.Style>
+                                </CheckBox>
+                                <Border Style="{StaticResource RobocopyInfoIconStyle}"
+                                       ToolTip="WARNING: Mirror mode makes the destination an exact copy of the source by DELETING files and folders that exist in destination but not in source. Use with caution!">
+                                    <TextBlock Style="{StaticResource RobocopyInfoIconTextStyle}"/>
+                                </Border>
+                            </StackPanel>
+                            
+                            <!-- Column 2: Copy security info -->
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="0,0,15,0">
+                                <CheckBox Content="Copy security info"
+                                          IsChecked="{Binding CopySecurity}"
+                                          Style="{StaticResource RobocopyCheckBoxStyle}"/>
+                                <Border Style="{StaticResource RobocopyInfoIconStyle}"
+                                       ToolTip="Copy file security (NTFS ACLs, permissions). Requires appropriate permissions on both source and destination.">
+                                    <TextBlock Style="{StaticResource RobocopyInfoIconTextStyle}"/>
+                                </Border>
+                            </StackPanel>
+                            
+                            <!-- Column 3: Backup mode -->
+                            <StackPanel Grid.Column="3" Orientation="Horizontal">
+                                <CheckBox Content="Backup mode"
+                                          IsChecked="{Binding BackupMode}"
+                                          Style="{StaticResource RobocopyCheckBoxStyle}"/>
+                                <Border Style="{StaticResource RobocopyInfoIconStyle}"
+                                       ToolTip="Use Windows backup mode to copy files even if you don't have direct read access. Requires backup privilege (typically admin).">
+                                    <TextBlock Style="{StaticResource RobocopyInfoIconTextStyle}"/>
+                                </Border>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+        </Border>
+        
+        <!-- Command Preview Section -->
+        <Border Grid.Row="2" 
+                Background="#FF252526"
+                BorderBrush="#FF555555"
+                BorderThickness="1"
+                CornerRadius="6"
+                Padding="12"
+                Margin="0,10,0,0">
+            <StackPanel>
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    
+                    <StackPanel Grid.Column="0" Orientation="Horizontal">
+                        <TextBlock Text="COMMAND PREVIEW" 
+                                  FontSize="11" 
+                                  FontWeight="Bold" 
+                                  Foreground="#FF888888"/>
+                        <Border Style="{StaticResource RobocopyInfoIconStyle}"
+                               ToolTip="Shows the exact robocopy command that will be executed when you click 'START COPY'. Updates automatically as you change options.">
+                            <TextBlock Style="{StaticResource RobocopyInfoIconTextStyle}"/>
+                        </Border>
+                    </StackPanel>
+                    
+                    <Button Grid.Column="1"
+                            Command="{Binding CopyCommandCommand}"
+                            ToolTip="Copy command to clipboard"
+                            Width="20"
+                            Height="20"
+                            Padding="0"
+                            Background="Transparent"
+                            BorderThickness="1"
+                            BorderBrush="#FF555555"
+                            Cursor="Hand">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}"
+                                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                                    CornerRadius="3">
+                                                <TextBlock Text="📋"
+                                                           Foreground="LightGray"
+                                                          FontSize="11"
+                                                          HorizontalAlignment="Center"
+                                                          VerticalAlignment="Center"/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="#FF3E3E42"/>
+                                                    <Setter Property="BorderBrush" Value="#FF00BCD4"/>
+                                                </Trigger>
+                                                <Trigger Property="IsPressed" Value="True">
+                                                    <Setter Property="Background" Value="#FF2D2D30"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </Grid>
+                
+                <Border Background="#FF1E1E1E"
+                        BorderBrush="#FF3E3E42"
+                        BorderThickness="1"
+                        CornerRadius="4"
+                        Padding="10,8">
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto" 
+                                 VerticalScrollBarVisibility="Disabled"
+                                 MaxHeight="80"
+                                 Style="{StaticResource RobocopyScrollViewerStyle}">
+                        <TextBlock Text="{Binding CommandPreview}"
+                                  FontFamily="Consolas, Courier New"
+                                  FontSize="11"
+                                  Foreground="#FF00BCD4"
+                                  TextWrapping="Wrap"
+                                  ToolTip="{Binding CommandPreview}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding CommandPreview}" Value="Select source and destination to preview command...">
+                                            <Setter Property="Foreground" Value="#FF888888"/>
+                                            <Setter Property="FontStyle" Value="Italic"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </ScrollViewer>
+                </Border>
+            </StackPanel>
+        </Border>
+        
+        <!-- Progress Section -->
+        <Border Grid.Row="3" Style="{StaticResource RobocopyCardStyle}">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                    <TextBlock Text="PROGRESS" 
+                              FontSize="11" 
+                              FontWeight="Bold" 
+                              Foreground="#FF888888"/>
+                    <Border Style="{StaticResource RobocopyInfoIconStyle}"
+                           ToolTip="Live progress information showing files copied, data transferred, speed, and estimated completion time.">
+                        <TextBlock Style="{StaticResource RobocopyInfoIconTextStyle}"/>
+                    </Border>
+                </StackPanel>
+                
+                <!-- Progress Bar with Percentage -->
+                <ProgressBar Value="{Binding ProgressPercentage}"
+                             Style="{StaticResource RobocopyProgressBarStyle}"
+                             Height="32"
+                             Margin="0,0,0,10"/>
+                
+                <!-- Current File (Prominent) -->
+                <Border Background="#FF252526"
+                        BorderBrush="#FF555555"
+                        BorderThickness="1"
+                        CornerRadius="4"
+                        Padding="10,8"
+                        Margin="0,0,0,15">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        
+                        <TextBlock Grid.Column="0"
+                                  Text="Current File"
+                                  FontSize="10"
+                                  Foreground="#FF888888"
+                                  VerticalAlignment="Center"
+                                  Margin="0,0,10,0"/>
+                        
+                        <TextBlock Grid.Column="1"
+                                  Text="{Binding CurrentFile, TargetNullValue='Waiting to start...'}"
+                                  FontSize="12"
+                                  Foreground="#FFE0E0E0"
+                                  TextTrimming="CharacterEllipsis"
+                                  VerticalAlignment="Center"
+                                  ToolTip="{Binding CurrentFile}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding CurrentFile}" Value="">
+                                            <Setter Property="Foreground" Value="#FF888888"/>
+                                            <Setter Property="FontStyle" Value="Italic"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
+                </Border>
+                
+                <!-- Statistics Grid -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    
+                    <!-- Files -->
+                    <Border Grid.Column="0" 
+                            Background="#FF252526" 
+                            CornerRadius="4" 
+                            Padding="8"
+                            Margin="0,0,5,0">
+                        <StackPanel>
+                            <TextBlock Text="FILES" 
+                                      FontSize="9" 
+                                      Foreground="#FF888888" 
+                                      Margin="0,0,0,4"/>
+                            <TextBlock FontSize="15" 
+                                      FontWeight="Bold" 
+                                      Foreground="#FF2196F3">
+                                <Run Text="{Binding FilesCopied, StringFormat=N0, Mode=OneWay}"/>
+                                <Run Text="/" FontSize="11" Foreground="#FF888888"/>
+                                <Run Text="{Binding TotalFiles, StringFormat=N0, Mode=OneWay}" FontSize="11"/>
+                            </TextBlock>
+                        </StackPanel>
+                    </Border>
+                    
+                    <!-- Data -->
+                    <Border Grid.Column="1" 
+                            Background="#FF252526" 
+                            CornerRadius="4" 
+                            Padding="8"
+                            Margin="0,0,5,0">
+                        <StackPanel>
+                            <TextBlock Text="DATA" 
+                                      FontSize="9" 
+                                      Foreground="#FF888888" 
+                                      Margin="0,0,0,4"/>
+                            <TextBlock FontSize="13" 
+                                      FontWeight="Bold" 
+                                      Foreground="#FF00BCD4"
+                                      TextTrimming="CharacterEllipsis">
+                                <Run Text="{Binding BytesCopied, Converter={StaticResource ByteFormatter}, Mode=OneWay}"/>
+                                <Run Text="/" FontSize="10" Foreground="#FF888888"/>
+                                <Run Text="{Binding TotalBytes, Converter={StaticResource ByteFormatter}, Mode=OneWay}" FontSize="10"/>
+                            </TextBlock>
+                        </StackPanel>
+                    </Border>
+                    
+                    <!-- Speed -->
+                    <Border Grid.Column="2" 
+                            Background="#FF252526" 
+                            CornerRadius="4" 
+                            Padding="8"
+                            Margin="0,0,5,0">
+                        <StackPanel>
+                            <TextBlock Text="SPEED" 
+                                      FontSize="9" 
+                                      Foreground="#FF888888" 
+                                      Margin="0,0,0,4"/>
+                            <TextBlock Text="{Binding TransferSpeedMBps, StringFormat='{}{0:F1} MB/s'}"
+                                      FontSize="15" 
+                                      FontWeight="Bold" 
+                                      Foreground="#FF4CAF50"/>
+                        </StackPanel>
+                    </Border>
+                    
+                    <!-- Elapsed -->
+                    <Border Grid.Column="3" 
+                            Background="#FF252526" 
+                            CornerRadius="4" 
+                            Padding="8"
+                            Margin="0,0,5,0">
+                        <StackPanel>
+                            <TextBlock Text="ELAPSED" 
+                                      FontSize="9" 
+                                      Foreground="#FF888888" 
+                                      Margin="0,0,0,4"/>
+                            <TextBlock Text="{Binding ElapsedTime}"
+                                      FontSize="13" 
+                                      FontWeight="Bold" 
+                                      Foreground="#FFE0E0E0"/>
+                        </StackPanel>
+                    </Border>
+                    
+                    <!-- Remaining -->
+                    <Border Grid.Column="4" 
+                            Background="#FF252526" 
+                            CornerRadius="4" 
+                            Padding="8">
+                        <StackPanel>
+                            <TextBlock Text="REMAINING" 
+                                      FontSize="9" 
+                                      Foreground="#FF888888" 
+                                      Margin="0,0,0,4"/>
+                            <TextBlock Text="{Binding EstimatedTimeRemaining}"
+                                      FontSize="13" 
+                                      FontWeight="Bold" 
+                                      Foreground="#FFFF9800"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </StackPanel>
+        </Border>
+        
+        <!-- Log Viewer Section -->
+        <Border Grid.Row="4"
+                Background="#FF1E1E1E"
+                BorderBrush="#FF555555"
+                BorderThickness="1"
+                CornerRadius="6"
+                Margin="0,10,0,0"
+                Padding="0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                
+                <Border Grid.Row="0"
+                        Background="#FF252526"
+                        BorderBrush="#FF555555"
+                        BorderThickness="0,0,0,1"
+                        CornerRadius="6,6,0,0"
+                        Padding="12,8">
+                    <TextBlock Text="OUTPUT LOG"
+                               FontSize="10"
+                               FontWeight="Bold"
+                               Foreground="#FF888888"/>
+                </Border>
+                
+                <ScrollViewer x:Name="LogScrollViewer"
+                              Grid.Row="1"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Auto"
+                              Padding="10"
+                              MaxHeight="200"
+                              Style="{StaticResource RobocopyScrollViewerStyle}">
+                    <TextBlock Text="{Binding LogOutput, Mode=OneWay}"
+                               TextWrapping="NoWrap"
+                               FontFamily="Consolas, Courier New"
+                               FontSize="10"
+                               Background="Transparent"
+                               Foreground="#FFA0A0A0"/>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+        
+        <!-- Control Buttons -->
+        <Grid Grid.Row="6" Margin="0,15,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            
+            <!-- Action Buttons (Right) -->
+            <StackPanel Grid.Column="2" Orientation="Horizontal">
+                <!-- Pause Button -->
+                <Button Content="PAUSE"
+                        Command="{Binding PauseCommand}"
+                        Style="{StaticResource RobocopySecondaryButtonStyle}"
+                        Padding="20,10"
+                        FontSize="13"
+                        FontWeight="SemiBold"
+                        Width="100"
+                        Margin="0,0,8,0"/>
+                
+                <!-- Cancel Button -->
+                <Button Content="CANCEL"
+                        Command="{Binding CancelCommand}"
+                        Padding="20,10"
+                        FontSize="13"
+                        FontWeight="SemiBold"
+                        Width="100"
+                        Margin="0,0,8,0">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource RobocopySecondaryButtonStyle}">
+                            <Setter Property="BorderBrush" Value="#FFF44336"/>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#FFF44336"/>
+                                    <Setter Property="BorderBrush" Value="#FFF44336"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+                
+                <!-- Start Button (Prominent) -->
+                <Button Content="START COPY"
+                        Command="{Binding StartCommand}"
+                        IsEnabled="{Binding CanStart}"
+                        Padding="30,10"
+                        FontSize="14"
+                        FontWeight="Bold"
+                        Width="150">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource RobocopyButtonStyle}">
+                            <Setter Property="Background">
+                                <Setter.Value>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                        <GradientStop Color="#FF2196F3" Offset="0"/>
+                                        <GradientStop Color="#FF1976D2" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background">
+                                        <Setter.Value>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                <GradientStop Color="#FF1976D2" Offset="0"/>
+                                                <GradientStop Color="#FF1565C0" Offset="1"/>
+                                            </LinearGradientBrush>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Background" Value="#FF3E3E42"/>
+                                    <Setter Property="Foreground" Value="#FF888888"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>
