@@ -26,6 +26,8 @@ public partial class App : Application
                 
                 // Robocopy Module Services (completely modular)
                 services.AddSingleton<IRobocopyService, RobocopyService>();
+                services.AddSingleton<IExclusionPresetService, ExclusionPresetService>();
+                services.AddSingleton<IGitIgnoreParserService, GitIgnoreParserService>();
                 services.AddSingleton<ProcessSuspender>();
                 services.AddSingleton<RobocopyCommandBuilder>();
                 services.AddSingleton<RobocopyLogParser>();

@@ -263,7 +263,7 @@ public class RobocopyService : IRobocopyService
     }
     
     /// <summary>
-    /// Pre-scan source directory to get total size/file count.
+    /// Pre-scan source directory to get total size/file count, respecting exclusions.
     /// </summary>
     private async Task PreScanSourceAsync(
         RobocopyOptions options,
@@ -272,21 +272,236 @@ public class RobocopyService : IRobocopyService
     {
         ReportProgress(progress, RobocopyJobState.Scanning, "Scanning source directory...");
         
-        var scanProgress = new Progress<ScanProgress>(p =>
-        {
-            var msg = $"Scanning... {p.ProcessedItems:N0} items";
-            ReportProgress(progress, RobocopyJobState.Scanning, msg);
-        });
+        _totalBytes = 0;
+        _totalFiles = 0;
+        _totalDirectories = 0;
         
-        var scanResult = await _fileSystemService.ScanDirectoryAsync(
+        await Task.Run(() => ScanDirectoryWithExclusions(
             options.SourcePath,
-            ScanMode.Recursive,
-            scanProgress,
-            cancellationToken);
+            options.SourcePath,
+            options.ExcludeDirectories,
+            options.ExcludeFiles,
+            progress,
+            cancellationToken), cancellationToken);
+    }
+    
+    /// <summary>
+    /// Recursively scan directory applying exclusion filters.
+    /// </summary>
+    private void ScanDirectoryWithExclusions(
+        string sourcePath,
+        string currentPath,
+        List<string> excludedDirectories,
+        List<string> excludedFiles,
+        IProgress<RobocopyProgress> progress,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
         
-        _totalBytes = scanResult.TotalSize;
-        _totalFiles = scanResult.TotalFiles;
-        _totalDirectories = scanResult.TotalDirectories;
+        try
+        {
+            var dirInfo = new DirectoryInfo(currentPath);
+            
+            // Get files (respecting file exclusions)
+            foreach (var file in dirInfo.EnumerateFiles())
+            {
+                try
+                {
+                    // Check if file should be excluded
+                    if (ShouldExcludeFile(file.FullName, file.Name, sourcePath, excludedFiles))
+                        continue;
+                    
+                    _totalFiles++;
+                    _totalBytes += file.Length;
+                    
+                    // Report progress periodically
+                    if (_totalFiles % 100 == 0)
+                    {
+                        var msg = $"Scanning... {_totalFiles:N0} files, {FormatBytes(_totalBytes)}";
+                        ReportProgress(progress, RobocopyJobState.Scanning, msg);
+                    }
+                }
+                catch
+                {
+                    // Skip files we can't access
+                }
+            }
+            
+            // Get directories (respecting directory exclusions)
+            foreach (var subDir in dirInfo.EnumerateDirectories())
+            {
+                try
+                {
+                    // Check if directory should be excluded
+                    if (ShouldExcludeDirectory(subDir.FullName, subDir.Name, sourcePath, excludedDirectories))
+                        continue;
+                    
+                    _totalDirectories++;
+                    
+                    // Recurse into subdirectory
+                    ScanDirectoryWithExclusions(
+                        sourcePath,
+                        subDir.FullName,
+                        excludedDirectories,
+                        excludedFiles,
+                        progress,
+                        cancellationToken);
+                }
+                catch
+                {
+                    // Skip directories we can't access
+                }
+            }
+        }
+        catch
+        {
+            // Skip if we can't access the directory
+        }
+    }
+    
+    /// <summary>
+    /// Check if a directory should be excluded.
+    /// Mimics robocopy /XD behavior: matches names, paths, and wildcards.
+    /// </summary>
+    private bool ShouldExcludeDirectory(string fullPath, string directoryName, string sourcePath, List<string> excludedDirectories)
+    {
+        if (excludedDirectories == null || excludedDirectories.Count == 0)
+            return false;
+        
+        foreach (var excluded in excludedDirectories)
+        {
+            // Case 1: Simple name match (e.g., "node_modules" matches any directory named "node_modules")
+            if (!excluded.Contains("\\") && !excluded.Contains("*") && !excluded.Contains("?"))
+            {
+                if (directoryName.Equals(excluded, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            // Case 2: Wildcard pattern in name (e.g., "*cache", "temp*")
+            else if (!excluded.Contains("\\") && (excluded.Contains("*") || excluded.Contains("?")))
+            {
+                if (MatchesWildcard(directoryName, excluded))
+                    return true;
+            }
+            // Case 3: Path-based exclusion (e.g., "src\\bin", "lib\\temp")
+            else if (excluded.Contains("\\"))
+            {
+                // Get relative path from source
+                string relativePath = GetRelativePath(sourcePath, fullPath);
+                
+                // Check if relative path matches or ends with the exclusion pattern
+                if (relativePath.Equals(excluded, StringComparison.OrdinalIgnoreCase) ||
+                    relativePath.EndsWith("\\"+excluded, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+                
+                // Also check with wildcards if pattern contains them
+                if (excluded.Contains("*") || excluded.Contains("?"))
+                {
+                    if (MatchesWildcard(relativePath, excluded))
+                        return true;
+                }
+            }
+        }
+        
+        return false;
+    }
+    
+    /// <summary>
+    /// Get relative path from base to target.
+    /// Uses string manipulation instead of Uri for better performance and robustness.
+    /// </summary>
+    private string GetRelativePath(string basePath, string targetPath)
+    {
+        // Normalize paths
+        basePath = Path.GetFullPath(basePath).TrimEnd('\\');
+        targetPath = Path.GetFullPath(targetPath).TrimEnd('\\');
+        
+        // If target is the base, return empty
+        if (targetPath.Equals(basePath, StringComparison.OrdinalIgnoreCase))
+            return string.Empty;
+        
+        // Target must start with base path
+        if (!targetPath.StartsWith(basePath, StringComparison.OrdinalIgnoreCase))
+            return targetPath; // Not relative, return full path
+        
+        // Remove base path and leading separator
+        var relative = targetPath.Substring(basePath.Length).TrimStart('\\');
+        return relative;
+    }
+    
+    /// <summary>
+    /// Check if a file should be excluded.
+    /// Mimics robocopy /XF behavior: matches names, paths, and wildcards.
+    /// </summary>
+    private bool ShouldExcludeFile(string fullPath, string fileName, string sourcePath, List<string> excludedFiles)
+    {
+        if (excludedFiles == null || excludedFiles.Count == 0)
+            return false;
+        
+        foreach (var excluded in excludedFiles)
+        {
+            // Case 1: Simple name or wildcard pattern (e.g., "*.log", "Thumbs.db")
+            if (!excluded.Contains("\\"))
+            {
+                if (MatchesWildcard(fileName, excluded))
+                    return true;
+            }
+            // Case 2: Path-based exclusion (e.g., "src\\*.log", "logs\\debug.txt")
+            else
+            {
+                // Get relative path from source
+                string relativePath = GetRelativePath(sourcePath, fullPath);
+                
+                // Check exact match or path ending match
+                if (relativePath.Equals(excluded, StringComparison.OrdinalIgnoreCase) ||
+                    relativePath.EndsWith("\\" + excluded, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+                
+                // Check with wildcards
+                if (excluded.Contains("*") || excluded.Contains("?"))
+                {
+                    if (MatchesWildcard(relativePath, excluded))
+                        return true;
+                }
+            }
+        }
+        
+        return false;
+    }
+    
+    /// <summary>
+    /// Simple wildcard matching (* and ?).
+    /// </summary>
+    private bool MatchesWildcard(string fileName, string pattern)
+    {
+        // Convert wildcard pattern to regex
+        var regexPattern = "^" + System.Text.RegularExpressions.Regex.Escape(pattern)
+            .Replace("\\*", ".*")
+            .Replace("\\?", ".") + "$";
+        
+        return System.Text.RegularExpressions.Regex.IsMatch(
+            fileName, 
+            regexPattern, 
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    }
+    
+    /// <summary>
+    /// Format bytes for display.
+    /// </summary>
+    private string FormatBytes(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len /= 1024;
+        }
+        return $"{len:F1} {sizes[order]}";
     }
     
     /// <summary>

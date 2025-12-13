@@ -412,13 +412,13 @@
                            FontSize="12" />
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal"
-                           Visibility="{Binding ScanResult.ErrorCount, FallbackValue='', Converter={StaticResource BoolToVisibilityConverter}}">
+                           Visibility="{Binding ScanResult.ErrorCount, FallbackValue=0, Converter={StaticResource BoolToVisibilityConverter}}">
                     <md:PackIcon Kind="AlertCircle" 
                                  Foreground="#FFFF4444" 
                                  Width="16" Height="16" 
                                  VerticalAlignment="Center" 
                                  Margin="0,0,4,0"/>
-                    <TextBlock Text="{Binding ScanResult.ErrorCount, StringFormat='Errors: {0}', FallbackValue=''}"
+                    <TextBlock Text="{Binding ScanResult.ErrorCount, StringFormat='Errors: {0}', FallbackValue=0}"
                                Foreground="#FFFF4444"
                                FontSize="12"
                                VerticalAlignment="Center" />

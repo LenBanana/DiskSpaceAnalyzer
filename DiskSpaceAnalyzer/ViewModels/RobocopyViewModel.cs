@@ -22,6 +22,8 @@ public partial class RobocopyViewModel : BaseViewModel
 {
     private readonly IRobocopyService _robocopyService;
     private readonly IDialogService _dialogService;
+    private readonly IExclusionPresetService _exclusionPresetService;
+    private readonly IGitIgnoreParserService _gitIgnoreParserService;
     private CancellationTokenSource? _cancellationTokenSource;
     
     [ObservableProperty] private string _sourcePath = string.Empty;
@@ -36,6 +38,14 @@ public partial class RobocopyViewModel : BaseViewModel
     [ObservableProperty] private int _threadCount = 8;
     [ObservableProperty] private bool _backupMode = false;
     [ObservableProperty] private bool _copySecurity = false;
+    
+    // Exclusions
+    [ObservableProperty] private ExclusionPreset? _selectedExclusionPreset;
+    [ObservableProperty] private string _newExclusionText = string.Empty;
+    [ObservableProperty] private bool _isExcludingFolder = true;
+    public ObservableCollection<string> ExcludedDirectories { get; } = new();
+    public ObservableCollection<string> ExcludedFiles { get; } = new();
+    public ObservableCollection<ExclusionPreset> ExclusionPresets { get; } = new();
     
     // State
     [ObservableProperty] private RobocopyJobState _currentState = RobocopyJobState.Ready;
@@ -67,6 +77,15 @@ public partial class RobocopyViewModel : BaseViewModel
     // Log viewer
     [ObservableProperty] private bool _isLogVisible = true;
     [ObservableProperty] private string _logOutput = string.Empty;
+    [ObservableProperty] private int _logLineCount = 0;
+    [ObservableProperty] private bool _isLogTruncated = false;
+    
+    // Log window management
+    private Window? _logWindow;
+    
+    // Line limiting for performance
+    private const int MaxDisplayLines = 1000;
+    private readonly System.Collections.Generic.Queue<string> _logLines = new();
     
     // Command preview
     public string CommandPreview
@@ -90,10 +109,17 @@ public partial class RobocopyViewModel : BaseViewModel
     
     public RobocopyViewModel(
         IRobocopyService robocopyService,
-        IDialogService dialogService)
+        IDialogService dialogService,
+        IExclusionPresetService exclusionPresetService,
+        IGitIgnoreParserService gitIgnoreParserService)
     {
         _robocopyService = robocopyService;
         _dialogService = dialogService;
+        _exclusionPresetService = exclusionPresetService;
+        _gitIgnoreParserService = gitIgnoreParserService;
+        
+        // Load exclusion presets
+        LoadExclusionPresets();
         
         // Validate robocopy availability on startup
         if (!_robocopyService.IsRobocopyAvailable())
@@ -112,6 +138,26 @@ public partial class RobocopyViewModel : BaseViewModel
     partial void OnThreadCountChanged(int value) => OnPropertyChanged(nameof(CommandPreview));
     partial void OnBackupModeChanged(bool value) => OnPropertyChanged(nameof(CommandPreview));
     partial void OnCopySecurityChanged(bool value) => OnPropertyChanged(nameof(CommandPreview));
+    
+    // Notify when exclusions change
+    partial void OnSelectedExclusionPresetChanged(ExclusionPreset? value)
+    {
+        if (value != null && value.Id != "custom")
+        {
+            // Load preset exclusions
+            ExcludedDirectories.Clear();
+            ExcludedFiles.Clear();
+            
+            foreach (var dir in value.ExcludedDirectories)
+                ExcludedDirectories.Add(dir);
+            
+            foreach (var file in value.ExcludedFiles)
+                ExcludedFiles.Add(file);
+        }
+        
+        OnPropertyChanged(nameof(CommandPreview));
+    }
+    
     partial void OnSelectedPresetChanged(RobocopyPreset value)
     {
         // Update options based on preset
@@ -149,15 +195,13 @@ public partial class RobocopyViewModel : BaseViewModel
         // Validate paths
         if (string.IsNullOrWhiteSpace(SourcePath))
         {
-            MessageBox.Show("Please select a source folder.", "Validation Error", 
-                MessageBoxButton.OK, MessageBoxImage.Warning);
+            await _dialogService.ShowWarningAsync("Validation Error", "Please select a source folder.");
             return;
         }
         
         if (string.IsNullOrWhiteSpace(DestinationPath))
         {
-            MessageBox.Show("Please select a destination folder.", "Validation Error", 
-                MessageBoxButton.OK, MessageBoxImage.Warning);
+            await _dialogService.ShowWarningAsync("Validation Error", "Please select a destination folder.");
             return;
         }
         
@@ -168,22 +212,19 @@ public partial class RobocopyViewModel : BaseViewModel
         var (isValid, errorMessage) = _robocopyService.ValidateOptions(options);
         if (!isValid)
         {
-            MessageBox.Show($"Validation failed: {errorMessage}", "Validation Error",
-                MessageBoxButton.OK, MessageBoxImage.Error);
+            await _dialogService.ShowErrorAsync("Validation Error", $"Validation failed: {errorMessage}");
             return;
         }
         
         // Warn about mirror mode
         if (MirrorMode)
         {
-            var result = MessageBox.Show(
-                "WARNING: Mirror mode will DELETE files at the destination that don't exist at the source!\n\n" +
-                "Are you sure you want to continue?",
+            var confirmed = await _dialogService.ShowConfirmationAsync(
                 "Mirror Mode Warning",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning);
+                "WARNING: Mirror mode will DELETE files at the destination that don't exist at the source!\n\n" +
+                "Are you sure you want to continue?");
             
-            if (result != MessageBoxResult.Yes)
+            if (!confirmed)
                 return;
         }
         
@@ -231,6 +272,79 @@ public partial class RobocopyViewModel : BaseViewModel
     }
     
     [RelayCommand]
+    private void OpenLogWindow()
+    {
+        // Create log window if it doesn't exist
+        if (_logWindow == null)
+        {
+            _logWindow = new Views.Robocopy.RobocopyLogWindow(this, _dialogService);
+            
+            // Clean up reference when window is closed
+            _logWindow.Closed += (s, e) => _logWindow = null;
+        }
+        
+        // Show or activate the window
+        if (_logWindow.IsVisible)
+        {
+            _logWindow.Activate();
+        }
+        else
+        {
+            _logWindow.Show();
+        }
+    }
+    
+    [RelayCommand]
+    private void OpenLogFile()
+    {
+        if (string.IsNullOrWhiteSpace(LogFilePath))
+        {
+            _dialogService.ShowInfo("No Log File", 
+                "No log file has been created yet. Start the copy operation first.");
+            return;
+        }
+        
+        if (!File.Exists(LogFilePath))
+        {
+            _dialogService.ShowWarning("File Not Found",
+                $"Log file not found at: {LogFilePath}");
+            return;
+        }
+        
+        try
+        {
+            // Open with default text editor
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = LogFilePath,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            _dialogService.ShowError("Error",
+                $"Failed to open log file: {ex.Message}\n\nPath: {LogFilePath}");
+        }
+    }
+    
+    /// <summary>
+    /// Closes the log window if it's open. Called when the main wizard closes.
+    /// </summary>
+    public void CloseLogWindow()
+    {
+        if (_logWindow != null)
+        {
+            // Unsubscribe from Closed event to prevent memory leak
+            _logWindow.Closed -= (s, e) => _logWindow = null;
+            
+            // Force close (bypass the OnClosing override that hides the window)
+            _logWindow.Closing -= null; // Clear any event handlers
+            _logWindow.Close();
+            _logWindow = null;
+        }
+    }
+    
+    [RelayCommand]
     private void CopyCommand()
     {
         try
@@ -244,8 +358,7 @@ public partial class RobocopyViewModel : BaseViewModel
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Failed to copy to clipboard: {ex.Message}", "Error",
-                MessageBoxButton.OK, MessageBoxImage.Error);
+            _dialogService.ShowError("Error", $"Failed to copy to clipboard: {ex.Message}");
         }
     }
     
@@ -303,7 +416,9 @@ public partial class RobocopyViewModel : BaseViewModel
             BackupMode = BackupMode,
             CopySecurity = CopySecurity,
             RetryCount = 3,
-            RetryWaitSeconds = 5
+            RetryWaitSeconds = 5,
+            ExcludeDirectories = ExcludedDirectories.ToList(),
+            ExcludeFiles = ExcludedFiles.ToList()
         };
     }
     
@@ -356,13 +471,14 @@ public partial class RobocopyViewModel : BaseViewModel
             
             // Show completion message
             var message = Result.GetSummary();
-            var icon = Result.Success ? MessageBoxImage.Information : MessageBoxImage.Warning;
-            MessageBox.Show(message, "Robocopy Completed", MessageBoxButton.OK, icon);
+            if (Result.Success)
+                _dialogService.ShowSuccess("Robocopy Completed", message);
+            else
+                _dialogService.ShowWarning("Robocopy Completed", message);
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Copy operation failed: {ex.Message}", "Error",
-                MessageBoxButton.OK, MessageBoxImage.Error);
+            _dialogService.ShowError("Error", $"Copy operation failed: {ex.Message}");
             
             StatusMessage = $"Failed: {ex.Message}";
             CurrentState = RobocopyJobState.Failed;
@@ -416,15 +532,50 @@ public partial class RobocopyViewModel : BaseViewModel
             ResumeCommand.NotifyCanExecuteChanged();
         }
         
-        // Update log output if visible (force new string instance to trigger binding update)
-        if (IsLogVisible)
+        // Update log output with line limiting for performance
+        var newOutput = _robocopyService.GetCurrentOutput(250);
+        if (!string.IsNullOrEmpty(newOutput) && newOutput != LogOutput)
         {
-            var newOutput = _robocopyService.GetCurrentOutput(250);
-            if (newOutput != LogOutput)
+            UpdateLogOutput(newOutput);
+        }
+    }
+    
+    /// <summary>
+    /// Updates the log output with line limiting for performance.
+    /// Keeps only the last MaxDisplayLines lines to prevent UI slowdown.
+    /// </summary>
+    private void UpdateLogOutput(string newOutput)
+    {
+        if (string.IsNullOrEmpty(newOutput))
+            return;
+        
+        // Split into lines
+        var lines = newOutput.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+        
+        // Clear queue if this is a fresh start (output is short)
+        if (lines.Length < _logLines.Count / 2)
+        {
+            _logLines.Clear();
+        }
+        
+        // Add new lines to queue
+        foreach (var line in lines)
+        {
+            _logLines.Enqueue(line);
+            
+            // Remove oldest lines if we exceed the limit
+            while (_logLines.Count > MaxDisplayLines)
             {
-                LogOutput = newOutput;
+                _logLines.Dequeue();
+                IsLogTruncated = true;
             }
         }
+        
+        // Update line count
+        LogLineCount = _logLines.Count;
+        
+        // Rebuild output string from queue
+        LogOutput = string.Join(Environment.NewLine, _logLines);
     }
     
     private string FormatTimeSpan(TimeSpan time)
@@ -448,5 +599,269 @@ public partial class RobocopyViewModel : BaseViewModel
             len /= 1024;
         }
         return $"{len:F2} {sizes[order]}";
+    }
+    
+    // ===== Exclusion Commands =====
+    
+    private void LoadExclusionPresets()
+    {
+        ExclusionPresets.Clear();
+        
+        // Add "Custom" option first
+        ExclusionPresets.Add(new ExclusionPreset
+        {
+            Id = "custom",
+            Name = "Custom",
+            Description = "Manually configure exclusions",
+            IsBuiltIn = true
+        });
+        
+        // Add all presets from service
+        foreach (var preset in _exclusionPresetService.GetAllPresets())
+        {
+            ExclusionPresets.Add(preset);
+        }
+        
+        // Select "None" by default
+        SelectedExclusionPreset = ExclusionPresets.FirstOrDefault(p => p.Id == "none");
+    }
+    
+    [RelayCommand]
+    private void AddExclusion()
+    {
+        var text = NewExclusionText?.Trim();
+        
+        if (string.IsNullOrWhiteSpace(text))
+            return;
+        
+        if (IsExcludingFolder)
+        {
+            // Add to excluded directories
+            if (!ExcludedDirectories.Contains(text))
+            {
+                ExcludedDirectories.Add(text);
+                
+                // Switch to custom preset
+                SwitchToCustomPreset();
+                
+                OnPropertyChanged(nameof(CommandPreview));
+            }
+        }
+        else
+        {
+            // Add to excluded files
+            if (!ExcludedFiles.Contains(text))
+            {
+                ExcludedFiles.Add(text);
+                
+                // Switch to custom preset
+                SwitchToCustomPreset();
+                
+                OnPropertyChanged(nameof(CommandPreview));
+            }
+        }
+        
+        // Clear input
+        NewExclusionText = string.Empty;
+    }
+    
+    [RelayCommand]
+    private void RemoveExcludedDirectory(string directory)
+    {
+        ExcludedDirectories.Remove(directory);
+        SwitchToCustomPreset();
+        OnPropertyChanged(nameof(CommandPreview));
+    }
+    
+    [RelayCommand]
+    private void RemoveExcludedFile(string file)
+    {
+        ExcludedFiles.Remove(file);
+        SwitchToCustomPreset();
+        OnPropertyChanged(nameof(CommandPreview));
+    }
+    
+    [RelayCommand]
+    private void SaveExclusionPreset()
+    {
+        // Prompt for preset name
+        var name = Microsoft.VisualBasic.Interaction.InputBox(
+            "Enter a name for this exclusion preset:",
+            "Save Preset",
+            "My Preset");
+        
+        if (string.IsNullOrWhiteSpace(name))
+            return;
+        
+        // Check if name already exists
+        if (_exclusionPresetService.PresetExists(name))
+        {
+            var overwrite = _dialogService.ShowQuestion(
+                "Preset Exists",
+                $"A preset named '{name}' already exists. Do you want to overwrite it?");
+            
+            if (!overwrite)
+                return;
+        }
+        
+        // Create and save preset
+        var preset = new ExclusionPreset
+        {
+            Name = name,
+            Description = $"User-created preset with {ExcludedDirectories.Count} folders and {ExcludedFiles.Count} files excluded",
+            ExcludedDirectories = ExcludedDirectories.ToList(),
+            ExcludedFiles = ExcludedFiles.ToList(),
+            IsBuiltIn = false
+        };
+        
+        try
+        {
+            _exclusionPresetService.SavePreset(preset);
+            
+            // Reload presets and select the new one
+            LoadExclusionPresets();
+            SelectedExclusionPreset = ExclusionPresets.FirstOrDefault(p => p.Name == name);
+            
+            _dialogService.ShowSuccess("Success", $"Preset '{name}' saved successfully!");
+        }
+        catch (Exception ex)
+        {
+            _dialogService.ShowError("Error", $"Failed to save preset: {ex.Message}");
+        }
+    }
+    
+    [RelayCommand]
+    private void DeleteExclusionPreset()
+    {
+        if (SelectedExclusionPreset == null || SelectedExclusionPreset.IsBuiltIn)
+        {
+            _dialogService.ShowWarning("Error", "Cannot delete built-in presets.");
+            return;
+        }
+        
+        var confirmed = _dialogService.ShowConfirmation(
+            "Confirm Delete",
+            $"Are you sure you want to delete the preset '{SelectedExclusionPreset.Name}'?");
+        
+        if (!confirmed)
+            return;
+        
+        try
+        {
+            _exclusionPresetService.DeletePreset(SelectedExclusionPreset.Id);
+            
+            // Reload presets and select "None"
+            LoadExclusionPresets();
+            SelectedExclusionPreset = ExclusionPresets.FirstOrDefault(p => p.Id == "none");
+            
+            _dialogService.ShowSuccess("Success", "Preset deleted successfully!");
+        }
+        catch (Exception ex)
+        {
+            _dialogService.ShowError("Error", $"Failed to delete preset: {ex.Message}");
+        }
+    }
+    
+    [RelayCommand]
+    private void ImportGitignore()
+    {
+        // Open file dialog to select .gitignore file
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Select .gitignore file",
+            Filter = "Gitignore files (.gitignore)|.gitignore|All files (*.*)|*.*",
+            CheckFileExists = true
+        };
+        
+        if (dialog.ShowDialog() != true)
+            return;
+        
+        try
+        {
+            // Parse the .gitignore file
+            var (directories, files, unsupportedPatterns) = _gitIgnoreParserService.ParseGitIgnoreFile(dialog.FileName);
+            
+            // Track what was actually added
+            int addedDirs = 0;
+            int addedFiles = 0;
+            
+            // Add directories (skip duplicates)
+            foreach (var dir in directories)
+            {
+                if (!ExcludedDirectories.Contains(dir))
+                {
+                    ExcludedDirectories.Add(dir);
+                    addedDirs++;
+                }
+            }
+            
+            // Add files (skip duplicates)
+            foreach (var file in files)
+            {
+                if (!ExcludedFiles.Contains(file))
+                {
+                    ExcludedFiles.Add(file);
+                    addedFiles++;
+                }
+            }
+            
+            // Switch to custom preset if we added anything
+            if (addedDirs > 0 || addedFiles > 0)
+            {
+                SwitchToCustomPreset();
+                OnPropertyChanged(nameof(CommandPreview));
+            }
+            
+            // Build summary message
+            var message = $"Successfully imported {addedDirs} folder(s) and {addedFiles} file pattern(s) from .gitignore.";
+            
+            if (directories.Count + files.Count > addedDirs + addedFiles)
+            {
+                var skipped = (directories.Count - addedDirs) + (files.Count - addedFiles);
+                message += $"\n\n{skipped} pattern(s) were skipped (already in exclusion list).";
+            }
+            
+            if (unsupportedPatterns.Count > 0)
+            {
+                message += $"\n\nWarning: {unsupportedPatterns.Count} complex pattern(s) were skipped (not supported by Robocopy):";
+                message += "\n" + string.Join("\n", unsupportedPatterns.Take(5));
+                
+                if (unsupportedPatterns.Count > 5)
+                {
+                    message += $"\n... and {unsupportedPatterns.Count - 5} more";
+                }
+            }
+            
+            // Show success message
+            if (addedDirs > 0 || addedFiles > 0)
+            {
+                _dialogService.ShowSuccess("Import Complete", message);
+            }
+            else if (unsupportedPatterns.Count > 0)
+            {
+                _dialogService.ShowWarning("Import Complete", message);
+            }
+            else
+            {
+                _dialogService.ShowInfo("Import Complete", "No new exclusions were added. All patterns were already in the exclusion list.");
+            }
+        }
+        catch (FileNotFoundException ex)
+        {
+            _dialogService.ShowError("File Not Found", ex.Message);
+        }
+        catch (Exception ex)
+        {
+            _dialogService.ShowError("Import Failed", $"Failed to import .gitignore file:\n{ex.Message}");
+        }
+    }
+    
+    private void SwitchToCustomPreset()
+    {
+        // Only switch if not already on custom
+        if (SelectedExclusionPreset?.Id != "custom")
+        {
+            SelectedExclusionPreset = ExclusionPresets.FirstOrDefault(p => p.Id == "custom");
+        }
     }
 }

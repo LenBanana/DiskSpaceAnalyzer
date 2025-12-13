@@ -125,7 +125,7 @@ public class RobocopyCommandBuilder
         {
             args.Add("/XF");
             foreach (var file in options.ExcludeFiles)
-                args.Add(file);
+                args.Add(QuotePath(file)); // Quote in case pattern has spaces
         }
         
         // File size filters

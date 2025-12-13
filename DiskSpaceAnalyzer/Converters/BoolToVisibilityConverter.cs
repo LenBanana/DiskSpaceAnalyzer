@@ -19,3 +19,21 @@ public class BoolToVisibilityConverter : IValueConverter
         return value is Visibility.Visible;
     }
 }
+
+public class MultiBoolToVisibilityConverter : IMultiValueConverter
+{
+    public object Convert(object[] values, Type targetType, object? parameter, CultureInfo culture)
+    {
+        foreach (var value in values)
+        {
+            if (value is not bool boolValue || !boolValue)
+                return Visibility.Collapsed;
+        }
+        return Visibility.Visible;
+    }
+
+    public object[] ConvertBack(object value, Type[] targetTypes, object? parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}

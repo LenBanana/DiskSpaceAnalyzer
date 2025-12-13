@@ -29,6 +29,18 @@ public class BytesToSizeConverter : IValueConverter
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        throw new NotImplementedException();
+        if (value is not string str) return 0L;
+        var parts = str.Split(' ');
+        if (parts.Length != 2 || !double.TryParse(parts[0], out var size)) return 0L;
+        var unit = parts[1].ToUpperInvariant();
+        return unit switch
+        {
+            "B" => (long)size,
+            "KB" => (long)(size * 1024),
+            "MB" => (long)(size * 1024 * 1024),
+            "GB" => (long)(size * 1024 * 1024 * 1024),
+            "TB" => (long)(size * 1024 * 1024 * 1024 * 1024),
+            _ => 0L
+        };
     }
 }
