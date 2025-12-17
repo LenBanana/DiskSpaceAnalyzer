@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using DiskSpaceAnalyzer.Models.FileCopy;
 
 namespace DiskSpaceAnalyzer.Models.Robocopy;
 
@@ -84,6 +85,13 @@ public class RobocopyOptions
     
     /// <summary>Move files and directories (/MOVE).</summary>
     public bool MoveFilesAndDirectories { get; set; } = false;
+    
+    // Integrity verification
+    /// <summary>Enable file integrity verification after copy.</summary>
+    public bool EnableIntegrityCheck { get; set; } = false;
+    
+    /// <summary>Method to use for integrity verification.</summary>
+    public IntegrityCheckMethod IntegrityCheckMethod { get; set; } = IntegrityCheckMethod.Metadata;
     
     // Logging (internal - managed by service)
     internal string? LogFilePath { get; set; }

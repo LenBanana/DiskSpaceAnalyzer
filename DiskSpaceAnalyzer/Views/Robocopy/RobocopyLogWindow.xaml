@@ -10,7 +10,7 @@
         Height="600" Width="900"
         MinHeight="400" MinWidth="600"
         WindowStartupLocation="CenterOwner"
-        d:DataContext="{d:DesignInstance viewModels:RobocopyViewModel, IsDesignTimeCreatable=False}"
+        d:DataContext="{d:DesignInstance viewModels:FileCopyViewModel, IsDesignTimeCreatable=False}"
         Background="#FF1E1E1E">
 
     <Window.Resources>

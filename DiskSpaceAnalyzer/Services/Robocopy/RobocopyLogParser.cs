@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
 using DiskSpaceAnalyzer.Models.Robocopy;
 
@@ -166,6 +167,74 @@ public partial class RobocopyLogParser
         }
         
         return lastFile;
+    }
+    
+    /// <summary>
+    /// Parse file information (path and size) from a robocopy output line.
+    /// Returns null if the line doesn't contain file copy information.
+    /// </summary>
+    public (string? filePath, long fileSize) ParseFileInfo(string line)
+    {
+        // Look for file operation lines with size information
+        // Format with /V /TS /FP /BYTES flags:
+        // "    New File  		    1091 2024/08/20 07:04:36	C:\Angular Projects\file.txt"
+        if ((line.Contains("New File") || 
+             line.Contains("Newer") ||
+             line.Contains("Older") ||
+             line.Contains("same")) && 
+            !line.StartsWith("ERROR"))
+        {
+            try
+            {
+                // Split by whitespace to get individual tokens
+                var parts = line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                
+                if (parts.Length < 5) // Need at least: status, status2(File), size, date, time, path
+                    return (null, 0);
+                
+                // Find the file size (first number after status)
+                int sizeIndex = -1;
+                long fileSize = 0;
+                
+                for (int i = 0; i < parts.Length; i++)
+                {
+                    if (long.TryParse(parts[i], out fileSize))
+                    {
+                        sizeIndex = i;
+                        break;
+                    }
+                }
+                
+                if (sizeIndex < 0)
+                    return (null, 0);
+                
+                // After size, expect timestamp (date and time), then the path
+                // Date format: 2024/08/20 or similar
+                // Time format: 07:04:36 or similar
+                // So skip 2 elements after size (date + time) to get to the path
+                int pathStartIndex = sizeIndex + 3; // size + date + time = path starts here
+                
+                if (pathStartIndex >= parts.Length)
+                    return (null, 0);
+                
+                // Everything from pathStartIndex onwards is the file path
+                // (in case path has spaces, we need to rejoin)
+                var filePath = string.Join(" ", parts.Skip(pathStartIndex));
+                
+                // Validate the path looks reasonable (has drive letter or UNC path)
+                if (filePath.Length > 2 && 
+                    (filePath[1] == ':' || filePath.StartsWith(@"\\")))
+                {
+                    return (filePath, fileSize);
+                }
+            }
+            catch
+            {
+                // Parsing failed, return null
+            }
+        }
+        
+        return (null, 0);
     }
     
     /// <summary>

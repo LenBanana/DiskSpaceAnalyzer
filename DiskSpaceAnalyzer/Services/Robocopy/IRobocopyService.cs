@@ -66,4 +66,11 @@ public interface IRobocopyService
     /// <param name="options">The robocopy options to build command for.</param>
     /// <returns>Full command string including robocopy.exe path and arguments.</returns>
     string BuildCommandLine(RobocopyOptions options);
+    
+    /// <summary>
+    /// Get current verification results (including failures) from the integrity service.
+    /// Used to display failures while operation is in progress.
+    /// </summary>
+    /// <returns>List of all verification results collected so far, or null if not available.</returns>
+    System.Collections.Generic.List<DiskSpaceAnalyzer.Models.FileCopy.IntegrityCheckResult>? GetCurrentVerificationResults();
 }

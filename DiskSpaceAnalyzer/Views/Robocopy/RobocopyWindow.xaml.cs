@@ -12,11 +12,11 @@ namespace DiskSpaceAnalyzer.Views.Robocopy;
 /// </summary>
 public partial class RobocopyWindow : Window
 {
-    private readonly RobocopyViewModel _viewModel;
+    private readonly FileCopyViewModel _viewModel;
     private readonly IDialogService _dialogService;
     private int _currentStep = 1;
     
-    public RobocopyWindow(RobocopyViewModel viewModel, IDialogService dialogService)
+    public RobocopyWindow(FileCopyViewModel viewModel, IDialogService dialogService)
     {
         InitializeComponent();
         _viewModel = viewModel;
@@ -33,7 +33,7 @@ public partial class RobocopyWindow : Window
         if (!ValidateCurrentStep())
             return;
         
-        if (_currentStep < 4)
+        if (_currentStep < 5)
         {
             _currentStep++;
             UpdateWizardStep();
@@ -79,22 +79,25 @@ public partial class RobocopyWindow : Window
         UpdateStepIndicator(2, _currentStep >= 2, _currentStep > 2);
         UpdateStepIndicator(3, _currentStep >= 3, _currentStep > 3);
         UpdateStepIndicator(4, _currentStep >= 4, _currentStep > 4);
+        UpdateStepIndicator(5, _currentStep >= 5, _currentStep > 5);
         
         // Update connecting lines
         Line1.Fill = new SolidColorBrush(_currentStep > 1 ? Color.FromRgb(0x41, 0x96, 0xF3) : Color.FromRgb(0x55, 0x55, 0x55));
         Line2.Fill = new SolidColorBrush(_currentStep > 2 ? Color.FromRgb(0x41, 0x96, 0xF3) : Color.FromRgb(0x55, 0x55, 0x55));
         Line3.Fill = new SolidColorBrush(_currentStep > 3 ? Color.FromRgb(0x41, 0x96, 0xF3) : Color.FromRgb(0x55, 0x55, 0x55));
+        Line4.Fill = new SolidColorBrush(_currentStep > 4 ? Color.FromRgb(0x41, 0x96, 0xF3) : Color.FromRgb(0x55, 0x55, 0x55));
         
         // Show/Hide content panels
         Step1Content.Visibility = _currentStep == 1 ? Visibility.Visible : Visibility.Collapsed;
         Step2Content.Visibility = _currentStep == 2 ? Visibility.Visible : Visibility.Collapsed;
         Step3Content.Visibility = _currentStep == 3 ? Visibility.Visible : Visibility.Collapsed;
         Step4Content.Visibility = _currentStep == 4 ? Visibility.Visible : Visibility.Collapsed;
+        Step5Content.Visibility = _currentStep == 5 ? Visibility.Visible : Visibility.Collapsed;
         
         // Update navigation buttons
         PreviousButton.Visibility = _currentStep > 1 ? Visibility.Visible : Visibility.Collapsed;
         
-        if (_currentStep < 4)
+        if (_currentStep < 5)
         {
             NextButton.Visibility = Visibility.Visible;
             ActionButtons.Visibility = Visibility.Collapsed;

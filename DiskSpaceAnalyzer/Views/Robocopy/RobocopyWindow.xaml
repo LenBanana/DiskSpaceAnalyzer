@@ -8,10 +8,10 @@
         xmlns:converters="clr-namespace:DiskSpaceAnalyzer.Converters"
         mc:Ignorable="d"
         Title="Robocopy Tool - Wizard"
-        Height="725" Width="950"
-        MinHeight="725" MinWidth="900"
+        Height="750" Width="950"
+        MinHeight="750" MinWidth="900"
         WindowStartupLocation="CenterScreen"
-        d:DataContext="{d:DesignInstance viewModels:RobocopyViewModel, IsDesignTimeCreatable=False}">
+        d:DataContext="{d:DesignInstance viewModels:FileCopyViewModel, IsDesignTimeCreatable=False}">
 
     <Window.Resources>
         <ResourceDictionary>
@@ -21,6 +21,7 @@
 
             <converters:BytesToSizeConverter x:Key="ByteFormatter" />
             <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+            <converters:EnumToBoolConverter x:Key="EnumToBoolConverter" />
 
             <!-- Step indicator active/inactive converters -->
             <Style x:Key="StepIndicatorActive" TargetType="Border">
@@ -71,6 +72,8 @@
             <!-- Step Indicator -->
             <Grid Grid.Row="1">
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
@@ -162,7 +165,7 @@
                            VerticalAlignment="Center"
                            Margin="10,0,10,0" />
 
-                <!-- Step 4: Execute -->
+                <!-- Step 4: Verification -->
                 <StackPanel Grid.Column="6" HorizontalAlignment="Center">
                     <Border x:Name="Step4Circle" Style="{StaticResource StepIndicatorInactive}">
                         <TextBlock Text="4"
@@ -173,6 +176,33 @@
                                    VerticalAlignment="Center" />
                     </Border>
                     <TextBlock x:Name="Step4Label"
+                               Text="Verification"
+                               FontSize="12"
+                               Foreground="#FF888888"
+                               HorizontalAlignment="Center"
+                               Margin="0,8,0,0" />
+                </StackPanel>
+
+                <!-- Line 4 -->
+                <Rectangle Grid.Column="7"
+                           x:Name="Line4"
+                           Height="2"
+                           Width="80"
+                           Fill="#FF555555"
+                           VerticalAlignment="Center"
+                           Margin="10,0,10,0" />
+
+                <!-- Step 5: Execute -->
+                <StackPanel Grid.Column="8" HorizontalAlignment="Center">
+                    <Border x:Name="Step5Circle" Style="{StaticResource StepIndicatorInactive}">
+                        <TextBlock Text="5"
+                                   FontSize="18"
+                                   FontWeight="Bold"
+                                   Foreground="#FF888888"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                    <TextBlock x:Name="Step5Label"
                                Text="Execute"
                                FontSize="12"
                                Foreground="#FF888888"
@@ -384,8 +414,168 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
 
-                        <!-- Left Column: Copy Mode -->
+                        <!-- Left Column: Engine Selection & Copy Mode -->
                         <StackPanel Grid.Column="0" VerticalAlignment="Top">
+                            
+                            <!-- ENGINE SELECTION -->
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                <TextBlock Text="COPY ENGINE"
+                                           FontSize="11"
+                                           FontWeight="Bold"
+                                           Foreground="#FF888888" />
+                                <Border Style="{StaticResource RobocopyInfoIconStyle}"
+                                        ToolTip="Choose which copy engine to use, or let the system automatically select the best one for your scenario.">
+                                    <TextBlock Style="{StaticResource RobocopyInfoIconTextStyle}" />
+                                </Border>
+                            </StackPanel>
+
+                            <ComboBox ItemsSource="{Binding AvailableEngines}"
+                                      SelectedItem="{Binding SelectedEngine}"
+                                      Style="{StaticResource RobocopyComboBoxStyle}"
+                                      Margin="0,0,0,8">
+                                <ComboBox.ItemContainerStyle>
+                                    <Style TargetType="ComboBoxItem" BasedOn="{StaticResource {x:Type ComboBoxItem}}">
+                                        <Style.Triggers>
+                                            <!-- Disable Robocopy if unavailable -->
+                                            <DataTrigger Binding="{Binding}" Value="Robocopy">
+                                                <Setter Property="IsEnabled" 
+                                                        Value="{Binding DataContext.IsRobocopyEngineAvailable, 
+                                                                RelativeSource={RelativeSource AncestorType=ComboBox}}" />
+                                                <Setter Property="ToolTip">
+                                                    <Setter.Value>
+                                                        <ToolTip>
+                                                            <ToolTip.Style>
+                                                                <Style TargetType="ToolTip">
+                                                                    <Setter Property="Content" Value="Robocopy engine for reliable network copies with retry logic" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding DataContext.IsRobocopyEngineAvailable, 
+                                                                                             RelativeSource={RelativeSource AncestorType=ComboBox}}" 
+                                                                                   Value="False">
+                                                                            <Setter Property="Content" 
+                                                                                  Value="Robocopy unavailable - robocopy.exe not found in system PATH" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </ToolTip.Style>
+                                                        </ToolTip>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </DataTrigger>
+                                            <!-- Tooltips for other engines -->
+                                            <DataTrigger Binding="{Binding}" Value="Auto">
+                                                <Setter Property="ToolTip" 
+                                                        Value="Automatically selects the best engine for your scenario" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding}" Value="Native">
+                                                <Setter Property="ToolTip" 
+                                                        Value="Pure .NET engine - 2-4x faster for local copies" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </ComboBox.ItemContainerStyle>
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock>
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="{Binding}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding}" Value="Auto">
+                                                                <Setter Property="Text" Value="🤖 Auto (Recommended)" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding}" Value="Native">
+                                                                <Setter Property="Text" Value="🚀 Native C# (Fast)" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding}" Value="Robocopy">
+                                                                <Setter Property="Text" Value="📋 Robocopy (Reliable)" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <!-- Unavailable indicator for Robocopy -->
+                                            <TextBlock Text=" ⚠️"
+                                                       Foreground="#FFFF9800"
+                                                       FontSize="10"
+                                                       VerticalAlignment="Center"
+                                                       Margin="4,0,0,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <MultiDataTrigger>
+                                                                <MultiDataTrigger.Conditions>
+                                                                    <Condition Binding="{Binding}" Value="Robocopy" />
+                                                                    <Condition Binding="{Binding DataContext.IsRobocopyEngineAvailable, 
+                                                                                       RelativeSource={RelativeSource AncestorType=ComboBox}}" 
+                                                                             Value="False" />
+                                                                </MultiDataTrigger.Conditions>
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </MultiDataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+
+                            <!-- Recommendation Display -->
+                            <Border Background="#FF2D2D30"
+                                    BorderBrush="#FF3F3F46"
+                                    BorderThickness="1"
+                                    CornerRadius="4"
+                                    Padding="10"
+                                    Margin="0,0,0,30">
+                                <StackPanel>
+                                    <!-- Compact Summary -->
+                                    <TextBlock Text="{Binding EngineRecommendationSummary}"
+                                               FontSize="11"
+                                               Foreground="#FFA0A0A0"
+                                               TextWrapping="Wrap"
+                                               LineHeight="16" />
+                                    
+                                    <!-- Expander for Details -->
+                                    <Expander Header="More details"
+                                              IsExpanded="{Binding ShowRecommendationDetails}"
+                                              Foreground="#FF888888"
+                                              Margin="0,8,0,0"
+                                              BorderThickness="0">
+                                        <TextBlock Text="{Binding EngineRecommendationDetails}"
+                                                   FontSize="10"
+                                                   Foreground="#FF999999"
+                                                   TextWrapping="Wrap"
+                                                   Margin="0,8,0,0"
+                                                   LineHeight="16" />
+                                    </Expander>
+                                    
+                                    <!-- Warnings -->
+                                    <ItemsControl ItemsSource="{Binding EngineWarnings}"
+                                                  Margin="0,8,0,0">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Background="#22FF9800"
+                                                        BorderBrush="#FFFF9800"
+                                                        BorderThickness="1"
+                                                        CornerRadius="3"
+                                                        Padding="6"
+                                                        Margin="0,0,0,4">
+                                                    <TextBlock FontSize="10"
+                                                               Foreground="#FFFFB74D"
+                                                               TextWrapping="Wrap">
+                                                        <Run Text="⚠️ " />
+                                                        <Run Text="{Binding}" />
+                                                    </TextBlock>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- COPY MODE (existing) -->
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
                                 <TextBlock Text="COPY MODE"
                                            FontSize="11"
@@ -872,8 +1062,182 @@
                     </StackPanel>
                 </ScrollViewer>
 
-                <!-- Step 4: Execute -->
+                <!-- Step 4: Verification Settings -->
                 <Grid x:Name="Step4Content" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0">
+                        <TextBlock Text="File Integrity Verification"
+                                   FontSize="20"
+                                   FontWeight="SemiBold"
+                                   Foreground="White"
+                                   Margin="0,0,0,10" />
+                        <TextBlock
+                            Text="Verify that files are copied correctly by checking their integrity after transfer."
+                            FontSize="13"
+                            Foreground="#FFA0A0A0"
+                            TextWrapping="Wrap"
+                            Margin="0,0,0,30" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="1" VerticalAlignment="Center">
+                        <!-- Verification Method Selection -->
+                        <Border Background="#FF252526"
+                                BorderBrush="#FF555555"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                Padding="25"
+                                IsEnabled="{Binding EnableIntegrityCheck}">
+                            <StackPanel>
+                                <TextBlock Text="VERIFICATION METHOD"
+                                           FontSize="11"
+                                           FontWeight="Bold"
+                                           Foreground="#FF888888"
+                                           Margin="0,0,0,20" />
+
+                                <!-- Quick (Metadata) -->
+                                <RadioButton GroupName="IntegrityMethod"
+                                             IsChecked="{Binding IntegrityCheckMethod, Converter={StaticResource EnumToBoolConverter}, ConverterParameter=Metadata}"
+                                             Margin="0,0,0,20">
+                                    <RadioButton.Content>
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+                                            <StackPanel Grid.Row="0" Orientation="Horizontal">
+                                                <TextBlock Text="Metadata" 
+                                                           FontSize="14"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="#FFE0E0E0"
+                                                           VerticalAlignment="Center" />
+                                            </StackPanel>
+                                            <TextBlock Grid.Row="1"
+                                                       Text="Compares file size, timestamps, and attributes."
+                                                       FontSize="12"
+                                                       Foreground="#FFA0A0A0"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,5,0,0" />
+                                        </Grid>
+                                    </RadioButton.Content>
+                                </RadioButton>
+
+                                <!-- Standard (MD5) -->
+                                <RadioButton GroupName="IntegrityMethod"
+                                             IsChecked="{Binding IntegrityCheckMethod, Converter={StaticResource EnumToBoolConverter}, ConverterParameter=MD5}"
+                                             Margin="0,0,0,20">
+                                    <RadioButton.Content>
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+                                            <StackPanel Grid.Row="0" Orientation="Horizontal">
+                                                <TextBlock Text="MD5" 
+                                                           FontSize="14"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="#FFE0E0E0"
+                                                           VerticalAlignment="Center" />
+                                            </StackPanel>
+                                            <TextBlock Grid.Row="1"
+                                                       Text="Computes MD5 checksums for strong integrity verification."
+                                                       FontSize="12"
+                                                       Foreground="#FFA0A0A0"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,5,0,0" />
+                                        </Grid>
+                                    </RadioButton.Content>
+                                </RadioButton>
+
+                                <!-- Secure (SHA256) -->
+                                <RadioButton GroupName="IntegrityMethod"
+                                             IsChecked="{Binding IntegrityCheckMethod, Converter={StaticResource EnumToBoolConverter}, ConverterParameter=SHA256}"
+                                             Margin="0,0,0,20">
+                                    <RadioButton.Content>
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+                                            <StackPanel Grid.Row="0" Orientation="Horizontal">
+                                                <TextBlock Text="SHA256" 
+                                                           FontSize="14"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="#FFE0E0E0"
+                                                           VerticalAlignment="Center" />
+                                            </StackPanel>
+                                            <TextBlock Grid.Row="1"
+                                                       Text="SHA256 cryptographic hash. Slowest option (~200 MB/s)."
+                                                       FontSize="12"
+                                                       Foreground="#FFA0A0A0"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,5,0,0" />
+                                        </Grid>
+                                    </RadioButton.Content>
+                                </RadioButton>
+
+                                <!-- Ultra-Fast (xxHash64) -->
+                                <RadioButton GroupName="IntegrityMethod"
+                                             IsChecked="{Binding IntegrityCheckMethod, Converter={StaticResource EnumToBoolConverter}, ConverterParameter=XXHash64}"
+                                             Margin="0,0,0,20">
+                                    <RadioButton.Content>
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+                                            <StackPanel Grid.Row="0" Orientation="Horizontal">
+                                                <TextBlock Text="xxHash64" 
+                                                           FontSize="14"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="#FFE0E0E0"
+                                                           VerticalAlignment="Center" />
+                                            </StackPanel>
+                                            <TextBlock Grid.Row="1"
+                                                       Text="Blazing fast hash verification (~2-5 GB/s). Excellent corruption detection with minimal overhead."
+                                                       FontSize="12"
+                                                       Foreground="#FFA0A0A0"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,5,0,0" />
+                                        </Grid>
+                                    </RadioButton.Content>
+                                </RadioButton>
+
+                                <!-- Best (BLAKE3) -->
+                                <RadioButton GroupName="IntegrityMethod"
+                                             IsChecked="{Binding IntegrityCheckMethod, Converter={StaticResource EnumToBoolConverter}, ConverterParameter=Blake3}">
+                                    <RadioButton.Content>
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+                                            <StackPanel Grid.Row="0" Orientation="Horizontal">
+                                                <TextBlock Text="BLAKE3 ⭐" 
+                                                           FontSize="14"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="#FFE0E0E0"
+                                                           VerticalAlignment="Center" />
+                                            </StackPanel>
+                                            <TextBlock Grid.Row="1"
+                                                       Text="Modern cryptographic hash (~5-15 GB/s). Perfect balance of speed and security. Highly recommended for all use cases."
+                                                       FontSize="12"
+                                                       Foreground="#FFA0A0A0"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,5,0,0" />
+                                        </Grid>
+                                    </RadioButton.Content>
+                                </RadioButton>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Step 5: Execute -->
+                <Grid x:Name="Step5Content" Visibility="Collapsed">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
@@ -1017,11 +1381,85 @@
                                         ToolTip="Open log output in separate window" />
                             </Grid>
 
-                            <!-- Progress Bar -->
-                            <ProgressBar Value="{Binding ProgressPercentage}"
-                                         Style="{StaticResource RobocopyProgressBarStyle}"
-                                         Height="28"
-                                         Margin="0,0,0,12" />
+                            <!-- Dual Progress Bars (Copy + Verification) -->
+                            <Border Background="#FF2D2D30"
+                                    BorderBrush="#FF555555"
+                                    BorderThickness="1"
+                                    CornerRadius="4"
+                                    Height="28"
+                                    Margin="0,0,0,12">
+                                <Grid x:Name="ProgressBarContainer">
+                                    <!-- Background: Copy Progress (Blue) -->
+                                    <ProgressBar Value="{Binding ProgressPercentage}"
+                                                 Height="28"
+                                                 Minimum="0"
+                                                 Maximum="100">
+                                        <ProgressBar.Style>
+                                            <Style TargetType="ProgressBar">
+                                                <Setter Property="Background" Value="Transparent"/>
+                                                <Setter Property="Foreground" Value="#FF2196F3"/>
+                                                <Setter Property="BorderBrush" Value="Transparent"/>
+                                                <Setter Property="BorderThickness" Value="0"/>
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="ProgressBar">
+                                                            <Grid x:Name="Root">
+                                                                <Border x:Name="PART_Track" />
+                                                                <Border x:Name="PART_Indicator" 
+                                                                        Background="{TemplateBinding Foreground}"
+                                                                        HorizontalAlignment="Left"
+                                                                        CornerRadius="3"
+                                                                        Margin="2">
+                                                                    <Border.Width>
+                                                                        <MultiBinding Converter="{StaticResource ProgressBarWidthConverter}">
+                                                                            <Binding Path="Value" RelativeSource="{RelativeSource TemplatedParent}"/>
+                                                                            <Binding Path="Minimum" RelativeSource="{RelativeSource TemplatedParent}"/>
+                                                                            <Binding Path="Maximum" RelativeSource="{RelativeSource TemplatedParent}"/>
+                                                                            <Binding Path="ActualWidth" ElementName="Root"/>
+                                                                        </MultiBinding>
+                                                                    </Border.Width>
+                                                                </Border>
+                                                            </Grid>
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Style>
+                                        </ProgressBar.Style>
+                                    </ProgressBar>
+                                    
+                                    <!-- Foreground: Verification Progress (Green) - overlays blue -->
+                                    <ProgressBar Value="{Binding VerificationProgressPercentage}"
+                                                 Style="{StaticResource RobocopyVerificationProgressBarStyle}"
+                                                 Height="28"
+                                                 Minimum="0"
+                                                 Maximum="100" />
+                                    
+                                    <!-- Text overlay showing percentages -->
+                                    <TextBlock HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               Foreground="White"
+                                               FontWeight="Bold"
+                                               FontSize="12">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text" Value="{Binding ProgressPercentage, StringFormat={}{0:F1}%}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding EnableIntegrityCheck}" Value="True">
+                                                        <Setter Property="Text">
+                                                            <Setter.Value>
+                                                                <MultiBinding StringFormat="Copy: {0:F1}% | Verify: {1:F1}%">
+                                                                    <Binding Path="ProgressPercentage" />
+                                                                    <Binding Path="VerificationProgressPercentage" />
+                                                                </MultiBinding>
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Grid>
+                            </Border>
 
                             <!-- Current File -->
                             <Border Background="#FF252526"
@@ -1031,142 +1469,297 @@
                                     Padding="10,6"
                                     Margin="0,0,0,12">
                                 <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
 
-                                    <TextBlock Grid.Column="0"
-                                               Text="Current"
-                                               FontSize="10"
-                                               Foreground="#FF888888"
-                                               VerticalAlignment="Center"
-                                               Margin="0,0,10,0" />
+                                    <!-- Copying Status -->
+                                    <Grid Grid.Row="0" Margin="0,0,0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
 
-                                    <TextBlock Grid.Column="1"
-                                               Text="{Binding CurrentFile, TargetNullValue='Ready...'}"
-                                               FontSize="11"
-                                               Foreground="#FFE0E0E0"
-                                               TextTrimming="CharacterEllipsis"
-                                               VerticalAlignment="Center"
-                                               ToolTip="{Binding CurrentFile}">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding CurrentFile}" Value="">
-                                                        <Setter Property="Foreground" Value="#FF888888" />
-                                                        <Setter Property="FontStyle" Value="Italic" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
+                                        <TextBlock Grid.Column="0"
+                                                   Text="Copying"
+                                                   FontSize="10"
+                                                   Foreground="#FF888888"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,10,0" />
+
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding CurrentFile, TargetNullValue='Ready...'}"
+                                                   FontSize="11"
+                                                   Foreground="#FFE0E0E0"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center"
+                                                   ToolTip="{Binding CurrentFile}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding CurrentFile}" Value="">
+                                                            <Setter Property="Foreground" Value="#FF888888" />
+                                                            <Setter Property="FontStyle" Value="Italic" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </Grid>
+
+                                    <!-- Verification Status -->
+                                    <Grid Grid.Row="1" Visibility="{Binding EnableIntegrityCheck, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBlock Grid.Column="0"
+                                                   Text="Verifying"
+                                                   FontSize="10"
+                                                   Foreground="#FF4CAF50"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,10,0" />
+
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding CurrentVerificationFile, TargetNullValue='Waiting...'}"
+                                                   FontSize="11"
+                                                   Foreground="#FF4CAF50"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center"
+                                                   ToolTip="{Binding CurrentVerificationFile}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding CurrentVerificationFile}" Value="">
+                                                            <Setter Property="Foreground" Value="#FF888888" />
+                                                            <Setter Property="FontStyle" Value="Italic" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </Grid>
                                 </Grid>
                             </Border>
 
                             <!-- Statistics -->
                             <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                
+                                <!-- Row 1: Copy Statistics -->
+                                <Grid Grid.Row="0" Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
 
-                                <Border Grid.Column="0"
-                                        Background="#FF252526"
-                                        CornerRadius="4"
-                                        Padding="8,6"
-                                        Margin="0,0,5,0">
-                                    <StackPanel>
-                                        <TextBlock Text="FILES"
-                                                   FontSize="8"
-                                                   Foreground="#FF888888"
-                                                   Margin="0,0,0,4" />
-                                        <TextBlock FontSize="13"
-                                                   FontWeight="Bold"
-                                                   Foreground="#FF2196F3">
-                                            <Run Text="{Binding FilesCopied, StringFormat=N0, Mode=OneWay}" />
-                                            <Run Text="/" FontSize="10" Foreground="#FF888888" />
-                                            <Run Text="{Binding TotalFiles, StringFormat=N0, Mode=OneWay}"
-                                                 FontSize="10" />
-                                        </TextBlock>
-                                    </StackPanel>
-                                </Border>
+                                    <Border Grid.Column="0"
+                                            Background="#FF252526"
+                                            CornerRadius="4"
+                                            Padding="8,6"
+                                            Margin="0,0,5,0">
+                                        <StackPanel>
+                                            <TextBlock Text="FILES"
+                                                       FontSize="8"
+                                                       Foreground="#FF888888"
+                                                       Margin="0,0,0,4" />
+                                            <TextBlock FontSize="13"
+                                                       FontWeight="Bold"
+                                                       Foreground="#FF2196F3">
+                                                <Run Text="{Binding FilesCopied, StringFormat=N0, Mode=OneWay}" />
+                                                <Run Text="/" FontSize="10" Foreground="#FF888888" />
+                                                <Run Text="{Binding TotalFiles, StringFormat=N0, Mode=OneWay}"
+                                                     FontSize="10" />
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </Border>
 
-                                <Border Grid.Column="1"
-                                        Background="#FF252526"
-                                        CornerRadius="4"
-                                        Padding="8,6"
-                                        Margin="0,0,5,0">
-                                    <StackPanel>
-                                        <TextBlock Text="DATA"
-                                                   FontSize="8"
-                                                   Foreground="#FF888888"
-                                                   Margin="0,0,0,4" />
-                                        <TextBlock FontSize="11"
-                                                   FontWeight="Bold"
-                                                   Foreground="#FF00BCD4"
-                                                   TextTrimming="CharacterEllipsis">
-                                            <Run
-                                                Text="{Binding BytesCopied, Converter={StaticResource ByteFormatter}, Mode=OneWay}" />
-                                            <Run Text="/" FontSize="9" Foreground="#FF888888" />
-                                            <Run
-                                                Text="{Binding TotalBytes, Converter={StaticResource ByteFormatter}, Mode=OneWay}"
-                                                FontSize="9" />
-                                        </TextBlock>
-                                    </StackPanel>
-                                </Border>
+                                    <Border Grid.Column="1"
+                                            Background="#FF252526"
+                                            CornerRadius="4"
+                                            Padding="8,6"
+                                            Margin="0,0,5,0">
+                                        <StackPanel>
+                                            <TextBlock Text="DATA"
+                                                       FontSize="8"
+                                                       Foreground="#FF888888"
+                                                       Margin="0,0,0,4" />
+                                            <TextBlock FontSize="11"
+                                                       FontWeight="Bold"
+                                                       Foreground="#FF00BCD4"
+                                                       TextTrimming="CharacterEllipsis">
+                                                <Run
+                                                    Text="{Binding BytesCopied, Converter={StaticResource ByteFormatter}, Mode=OneWay}" />
+                                                <Run Text="/" FontSize="9" Foreground="#FF888888" />
+                                                <Run
+                                                    Text="{Binding TotalBytes, Converter={StaticResource ByteFormatter}, Mode=OneWay}"
+                                                    FontSize="9" />
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </Border>
 
-                                <Border Grid.Column="2"
-                                        Background="#FF252526"
-                                        CornerRadius="4"
-                                        Padding="8,6"
-                                        Margin="0,0,5,0">
-                                    <StackPanel>
-                                        <TextBlock Text="SPEED"
-                                                   FontSize="8"
-                                                   Foreground="#FF888888"
-                                                   Margin="0,0,0,4" />
-                                        <TextBlock Text="{Binding TransferSpeedMBps, StringFormat='{}{0:F1} MB/s'}"
-                                                   FontSize="13"
-                                                   FontWeight="Bold"
-                                                   Foreground="#FF4CAF50" />
-                                    </StackPanel>
-                                </Border>
+                                    <Border Grid.Column="2"
+                                            Background="#FF252526"
+                                            CornerRadius="4"
+                                            Padding="8,6"
+                                            Margin="0,0,5,0">
+                                        <StackPanel>
+                                            <TextBlock Text="SPEED"
+                                                       FontSize="8"
+                                                       Foreground="#FF888888"
+                                                       Margin="0,0,0,4" />
+                                            <TextBlock Text="{Binding TransferSpeedMBps, StringFormat='{}{0:F1} MB/s'}"
+                                                       FontSize="13"
+                                                       FontWeight="Bold"
+                                                       Foreground="#FF4CAF50" />
+                                        </StackPanel>
+                                    </Border>
 
-                                <Border Grid.Column="3"
-                                        Background="#FF252526"
-                                        CornerRadius="4"
-                                        Padding="8,6"
-                                        Margin="0,0,5,0">
-                                    <StackPanel>
-                                        <TextBlock Text="ELAPSED"
-                                                   FontSize="8"
-                                                   Foreground="#FF888888"
-                                                   Margin="0,0,0,4" />
-                                        <TextBlock Text="{Binding ElapsedTime}"
-                                                   FontSize="11"
-                                                   FontWeight="Bold"
-                                                   Foreground="#FFE0E0E0" />
-                                    </StackPanel>
-                                </Border>
+                                    <Border Grid.Column="3"
+                                            Background="#FF252526"
+                                            CornerRadius="4"
+                                            Padding="8,6"
+                                            Margin="0,0,5,0">
+                                        <StackPanel>
+                                            <TextBlock Text="ELAPSED"
+                                                       FontSize="8"
+                                                       Foreground="#FF888888"
+                                                       Margin="0,0,0,4" />
+                                            <TextBlock Text="{Binding ElapsedTime}"
+                                                       FontSize="11"
+                                                       FontWeight="Bold"
+                                                       Foreground="#FFE0E0E0" />
+                                        </StackPanel>
+                                    </Border>
 
-                                <Border Grid.Column="4"
-                                        Background="#FF252526"
+                                    <Border Grid.Column="4"
+                                            Background="#FF252526"
+                                            CornerRadius="4"
+                                            Padding="8,6">
+                                        <StackPanel>
+                                            <TextBlock Text="REMAINING"
+                                                       FontSize="8"
+                                                       Foreground="#FF888888"
+                                                       Margin="0,0,0,4" />
+                                            <TextBlock Text="{Binding EstimatedTimeRemaining}"
+                                                       FontSize="11"
+                                                       FontWeight="Bold"
+                                                       Foreground="#FFFF9800" />
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                                
+                                <!-- Row 2: Verification Statistics -->
+                                <Border Grid.Row="1"
+                                        Background="#FF1E3A1E"
+                                        BorderBrush="#FF4CAF50"
+                                        BorderThickness="1"
                                         CornerRadius="4"
-                                        Padding="8,6">
-                                    <StackPanel>
-                                        <TextBlock Text="REMAINING"
-                                                   FontSize="8"
-                                                   Foreground="#FF888888"
-                                                   Margin="0,0,0,4" />
-                                        <TextBlock Text="{Binding EstimatedTimeRemaining}"
-                                                   FontSize="11"
+                                        Padding="12,8"
+                                        Visibility="{Binding EnableIntegrityCheck, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBlock Grid.Column="0"
+                                                   Text="🔒 VERIFICATION:"
+                                                   FontSize="10"
                                                    FontWeight="Bold"
-                                                   Foreground="#FFFF9800" />
-                                    </StackPanel>
+                                                   Foreground="#FF4CAF50"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,15,0" />
+
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                            <TextBlock FontSize="11" Foreground="#FFE0E0E0" Margin="0,0,15,0">
+                                                <Run Text="Files Verified: " Foreground="#FF888888" />
+                                                <Run Text="{Binding FilesVerified, StringFormat=N0, Mode=OneWay}" 
+                                                     FontWeight="Bold" 
+                                                     Foreground="#FF4CAF50" />
+                                                <Run Text="/" Foreground="#FF888888" FontSize="9" />
+                                                <Run Text="{Binding TotalFiles, StringFormat=N0, Mode=OneWay}" 
+                                                     FontSize="9"
+                                                     Foreground="#FF888888" />
+                                            </TextBlock>
+
+                                            <Border Width="1" 
+                                                    Background="#FF555555" 
+                                                    Margin="0,2"
+                                                    VerticalAlignment="Stretch" />
+
+                                            <TextBlock FontSize="11" Foreground="#FFE0E0E0" Margin="15,0">
+                                                <Run Text="Passed: " Foreground="#FF888888" />
+                                                <Run Text="{Binding FilesVerifiedPassed, StringFormat=N0, Mode=OneWay}" 
+                                                     FontWeight="Bold" 
+                                                     Foreground="#FF4CAF50" />
+                                            </TextBlock>
+
+                                            <Border Width="1" 
+                                                    Background="#FF555555" 
+                                                    Margin="0,2"
+                                                    VerticalAlignment="Stretch" />
+
+                                            <TextBlock FontSize="11" Foreground="#FFE0E0E0" Margin="15,0">
+                                                <Run Text="Retrying: " Foreground="#FF888888" />
+                                                <Run Text="{Binding FilesRetrying, StringFormat=N0, Mode=OneWay}" 
+                                                     FontWeight="Bold" 
+                                                     Foreground="#FFFFA726" />
+                                            </TextBlock>
+
+                                            <Border Width="1" 
+                                                    Background="#FF555555" 
+                                                    Margin="0,2"
+                                                    VerticalAlignment="Stretch" />
+
+                                            <Button Command="{Binding ShowFailedVerificationsCommand}"
+                                                    Background="Transparent"
+                                                    BorderThickness="0"
+                                                    Padding="0"
+                                                    Margin="15,0,0,0"
+                                                    Cursor="Hand"
+                                                    ToolTip="Click to view failed verification details"
+                                                    VerticalAlignment="Center">
+                                                <Button.Style>
+                                                    <Style TargetType="Button">
+                                                        <Setter Property="Template">
+                                                            <Setter.Value>
+                                                                <ControlTemplate TargetType="Button">
+                                                                    <Border Background="{TemplateBinding Background}"
+                                                                            Padding="{TemplateBinding Padding}">
+                                                                        <ContentPresenter/>
+                                                                    </Border>
+                                                                    <ControlTemplate.Triggers>
+                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                            <Setter Property="Background" Value="#22FF0000"/>
+                                                                        </Trigger>
+                                                                        <Trigger Property="IsPressed" Value="True">
+                                                                            <Setter Property="Background" Value="#44FF0000"/>
+                                                                        </Trigger>
+                                                                    </ControlTemplate.Triggers>
+                                                                </ControlTemplate>
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                    </Style>
+                                                </Button.Style>
+                                                <TextBlock FontSize="11" Foreground="#FFE0E0E0">
+                                                    <Run Text="Failed: " Foreground="#FF888888" />
+                                                    <Run Text="{Binding FilesVerifiedFailed, StringFormat=N0, Mode=OneWay}" 
+                                                         FontWeight="Bold" 
+                                                         Foreground="#FFF44336" 
+                                                         TextDecorations="Underline" />
+                                                </TextBlock>
+                                            </Button>
+                                        </StackPanel>
+                                    </Grid>
                                 </Border>
                             </Grid>
                         </StackPanel>

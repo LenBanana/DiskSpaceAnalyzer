@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using DiskSpaceAnalyzer.Models.FileCopy;
 
 namespace DiskSpaceAnalyzer.Models.Robocopy;
 
@@ -73,6 +74,28 @@ public class RobocopyResult
     
     /// <summary>Path to the log file.</summary>
     public string LogFilePath { get; set; } = string.Empty;
+    
+    // Integrity verification results
+    /// <summary>Whether integrity verification was enabled.</summary>
+    public bool IntegrityCheckEnabled { get; set; }
+    
+    /// <summary>Integrity verification method used.</summary>
+    public IntegrityCheckMethod IntegrityCheckMethod { get; set; }
+    
+    /// <summary>Number of files verified.</summary>
+    public long FilesVerified { get; set; }
+    
+    /// <summary>Number of files that passed verification.</summary>
+    public long FilesVerifiedPassed { get; set; }
+    
+    /// <summary>Number of files that failed verification.</summary>
+    public long FilesVerifiedFailed { get; set; }
+    
+    /// <summary>List of files that failed integrity verification.</summary>
+    public List<string> FailedVerifications { get; set; } = new();
+    
+    /// <summary>Detailed information about files that failed verification.</summary>
+    public List<VerificationFailureInfo> FailedVerificationDetails { get; set; } = new();
     
     /// <summary>
     /// Interpret robocopy exit code.

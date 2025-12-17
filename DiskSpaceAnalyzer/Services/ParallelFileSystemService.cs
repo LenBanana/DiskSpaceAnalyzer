@@ -83,7 +83,7 @@ public class ParallelFileSystemService : IFileSystemService
     private async Task<DirectoryItem> ScanDirectoryInternalAsync(
         string path,
         ScanMode mode,
-        IProgress<ScanProgress> progress,
+        IProgress<ScanProgress>? progress,
         CancellationToken cancellationToken,
         ConcurrentBag<string> errors,
         int depth)
@@ -190,7 +190,7 @@ public class ParallelFileSystemService : IFileSystemService
         DirectoryItem parentItem,
         DirectoryInfo[] directories,
         ScanMode mode,
-        IProgress<ScanProgress> progress,
+        IProgress<ScanProgress>? progress,
         CancellationToken cancellationToken,
         ConcurrentBag<string> errors,
         int depth)
@@ -256,7 +256,7 @@ public class ParallelFileSystemService : IFileSystemService
         DirectoryItem parentItem,
         DirectoryInfo[] directories,
         ScanMode mode,
-        IProgress<ScanProgress> progress,
+        IProgress<ScanProgress>? progress,
         CancellationToken cancellationToken,
         ConcurrentBag<string> errors,
         int depth)
@@ -309,7 +309,7 @@ public class ParallelFileSystemService : IFileSystemService
     private async Task<long> CalculateTopLevelSizesAsync(
         DirectoryItem parentItem,
         DirectoryInfo[] directories,
-        IProgress<ScanProgress> progress,
+        IProgress<ScanProgress>? progress,
         CancellationToken cancellationToken,
         ConcurrentBag<string> errors)
     {

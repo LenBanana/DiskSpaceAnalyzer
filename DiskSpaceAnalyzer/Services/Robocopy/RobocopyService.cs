@@ -8,14 +8,17 @@ using System.Threading;
 using System.Threading.Tasks;
 using DiskSpaceAnalyzer.Models;
 using DiskSpaceAnalyzer.Models.Robocopy;
+using DiskSpaceAnalyzer.Models.FileCopy;
+using DiskSpaceAnalyzer.Services.FileCopy;
 
 namespace DiskSpaceAnalyzer.Services.Robocopy;
 
 /// <summary>
 /// Main implementation of robocopy operations.
 /// Manages process lifecycle, progress monitoring, and pause/resume functionality.
+/// Implements both IFileCopyService (generic) and IRobocopyService (legacy) for full compatibility.
 /// </summary>
-public class RobocopyService : IRobocopyService
+public class RobocopyService : IFileCopyService, IRobocopyService
 {
     private readonly IFileSystemService _fileSystemService;
     private readonly ProcessSuspender _processSuspender;
@@ -260,6 +263,13 @@ public class RobocopyService : IRobocopyService
         var robocopyPath = GetRobocopyPath();
         var arguments = _commandBuilder.BuildArguments(options);
         return $"{robocopyPath} {arguments}";
+    }
+    
+    public List<DiskSpaceAnalyzer.Models.FileCopy.IntegrityCheckResult>? GetCurrentVerificationResults()
+    {
+        // Robocopy doesn't have built-in integrity verification
+        // This would need to be implemented separately if needed
+        return null;
     }
     
     /// <summary>
@@ -746,4 +756,120 @@ public class RobocopyService : IRobocopyService
             _outputLines.Clear();
         }
     }
+
+    #region IFileCopyService Implementation (Adapter Methods)
+
+    /// <summary>
+    /// Generic copy method - wraps robocopy-specific CopyAsync with conversion.
+    /// </summary>
+    async Task<FileCopyResult> IFileCopyService.CopyAsync(
+        FileCopyOptions options,
+        IProgress<FileCopyProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        // Convert FileCopyOptions to RobocopyOptions
+        var robocopyOptions = FileCopyOptionsMapper.ToRobocopyOptions(options);
+
+        // Wrap progress reporter
+        IProgress<RobocopyProgress>? robocopyProgress = null;
+        if (progress != null)
+        {
+            robocopyProgress = new Progress<RobocopyProgress>(roboProgress =>
+            {
+                progress.Report(FileCopyProgressMapper.ToFileCopyProgress(roboProgress));
+            });
+        }
+
+        // Execute robocopy operation
+        var robocopyResult = await CopyAsync(robocopyOptions, robocopyProgress!, cancellationToken);
+
+        // Convert result back to generic format
+        return FileCopyResultMapper.ToFileCopyResult(robocopyResult);
+    }
+
+    /// <summary>
+    /// Validate options - converts to robocopy options and validates.
+    /// </summary>
+    Task<(bool IsValid, string? ErrorMessage, List<string>? Warnings)> IFileCopyService.ValidateOptionsAsync(FileCopyOptions options)
+    {
+        var robocopyOptions = FileCopyOptionsMapper.ToRobocopyOptions(options);
+        var (isValid, error) = ValidateOptions(robocopyOptions);
+
+        List<string>? warnings = null;
+        if (robocopyOptions.MirrorMode)
+        {
+            warnings = new List<string>
+            {
+                "⚠️ Mirror mode will delete files at destination that don't exist at source"
+            };
+        }
+
+        return Task.FromResult((isValid, error, warnings));
+    }
+
+    /// <summary>
+    /// Get operation description - returns robocopy command line.
+    /// </summary>
+    string IFileCopyService.GetOperationDescription(FileCopyOptions options)
+    {
+        var robocopyOptions = FileCopyOptionsMapper.ToRobocopyOptions(options);
+        return BuildCommandLine(robocopyOptions);
+    }
+
+    /// <summary>
+    /// Get robocopy engine capabilities.
+    /// </summary>
+    CopyEngineCapabilities IFileCopyService.GetCapabilities()
+    {
+        return new CopyEngineCapabilities
+        {
+            EngineType = CopyEngineType.Robocopy,
+            Name = "Robocopy",
+            Description = "Windows Robocopy - proven reliability with decades of optimization",
+            SupportsParallelCopy = true,
+            SupportsPauseResume = true,
+            SupportsMirrorMode = true,
+            SupportsBackupMode = true,
+            SupportsNetworkOptimization = true,
+            SupportsSymbolicLinks = true,
+            SupportsSecurityInfo = true,
+            RequiresExternalTool = true,
+            SupportsByteProgressTracking = false,
+            LocalPerformance = "Fast",
+            NetworkPerformance = "Very Fast",
+            HDDPerformance = "Fast",
+            Platform = "Windows",
+            MinimumWindowsVersion = "Windows Vista",
+            OptimalScenarios = new List<string>
+            {
+                "Network share operations",
+                "Backup operations with locked files",
+                "Mirror/sync operations",
+                "Operations requiring security preservation"
+            },
+            LimitedScenarios = new List<string>
+            {
+                "Local SSD operations (slower than native)",
+                "Need byte-level progress tracking"
+            }
+        };
+    }
+
+    /// <summary>
+    /// Get engine type.
+    /// </summary>
+    CopyEngineType IFileCopyService.GetEngineType()
+    {
+        return CopyEngineType.Robocopy;
+    }
+
+    /// <summary>
+    /// Check if robocopy is available.
+    /// </summary>
+    bool IFileCopyService.IsAvailable()
+    {
+        return IsRobocopyAvailable();
+    }
+
+    #endregion
 }

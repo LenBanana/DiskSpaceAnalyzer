@@ -1,4 +1,5 @@
 using System;
+using DiskSpaceAnalyzer.Models.FileCopy;
 
 namespace DiskSpaceAnalyzer.Models.Robocopy;
 
@@ -48,8 +49,11 @@ public class RobocopyProgress
     public TimeSpan PausedDuration { get; init; }
     
     // Calculated properties
-    /// <summary>Overall progress percentage (0-100).</summary>
+    /// <summary>Overall progress percentage based on bytes (0-100).</summary>
     public double PercentComplete => TotalBytes > 0 ? (BytesCopied * 100.0 / TotalBytes) : 0;
+    
+    /// <summary>Progress percentage based on file count (0-100).</summary>
+    public double FilePercentComplete => TotalFiles > 0 ? (FilesCopied * 100.0 / TotalFiles) : 0;
     
     /// <summary>Transfer speed in bytes per second.</summary>
     public double BytesPerSecond
@@ -82,6 +86,25 @@ public class RobocopyProgress
     /// <summary>Number of skipped files.</summary>
     public long SkippedFiles { get; init; }
     
+    // Integrity verification
+    /// <summary>Number of files verified for integrity.</summary>
+    public long FilesVerified { get; init; }
+    
+    /// <summary>Number of files that passed verification.</summary>
+    public long FilesVerifiedPassed { get; init; }
+    
+    /// <summary>Number of files that failed verification.</summary>
+    public long FilesVerifiedFailed { get; init; }
+    
+    /// <summary>Number of files currently retrying verification.</summary>
+    public long FilesRetrying { get; init; }
+    
+    /// <summary>Integrity verification progress percentage (0-100).</summary>
+    public double VerificationPercentComplete { get; init; }
+    
+    /// <summary>Current file being verified.</summary>
+    public string CurrentVerificationFile { get; init; } = string.Empty;
+    
     /// <summary>
     /// Create a new progress with updated values.
     /// </summary>
@@ -109,7 +132,12 @@ public class RobocopyProgress
             Elapsed = elapsed ?? Elapsed,
             PausedDuration = PausedDuration,
             ErrorCount = errorCount ?? ErrorCount,
-            SkippedFiles = SkippedFiles
+            SkippedFiles = SkippedFiles,
+            FilesVerified = FilesVerified,
+            FilesVerifiedPassed = FilesVerifiedPassed,
+            FilesVerifiedFailed = FilesVerifiedFailed,
+            VerificationPercentComplete = VerificationPercentComplete,
+            CurrentVerificationFile = CurrentVerificationFile
         };
     }
 }

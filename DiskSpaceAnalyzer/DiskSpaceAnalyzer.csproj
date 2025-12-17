@@ -7,6 +7,8 @@
         <UseWPF>true</UseWPF>
         <ApplicationManifest>app.manifest</ApplicationManifest>
         <ApplicationIcon>main_icon.ico</ApplicationIcon>
+        <!-- Suppress NU1701 warnings for LiveCharts (0.9.7 is compatible despite targeting older frameworks) -->
+        <NoWarn>$(NoWarn);NU1701</NoWarn>
     </PropertyGroup>
 
     <ItemGroup>
@@ -15,6 +17,9 @@
         <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2"/>
         <PackageReference Include="LiveCharts.Wpf" Version="0.9.7"/>
         <PackageReference Include="MaterialDesignThemes" Version="5.2.2-ci998" />
+        <PackageReference Include="Blake3" Version="1.1.0"/>
+        <PackageReference Include="System.IO.Hashing" Version="9.0.0"/>
+        <PackageReference Include="System.Management" Version="9.0.0"/>
     </ItemGroup>
 
 </Project>

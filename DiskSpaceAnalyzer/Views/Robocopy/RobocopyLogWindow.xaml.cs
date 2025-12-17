@@ -12,10 +12,10 @@ namespace DiskSpaceAnalyzer.Views.Robocopy;
 /// </summary>
 public partial class RobocopyLogWindow : Window
 {
-    private readonly RobocopyViewModel _viewModel;
+    private readonly FileCopyViewModel _viewModel;
     private readonly IDialogService _dialogService;
     
-    public RobocopyLogWindow(RobocopyViewModel viewModel, IDialogService dialogService)
+    public RobocopyLogWindow(FileCopyViewModel viewModel, IDialogService dialogService)
     {
         InitializeComponent();
         _viewModel = viewModel;
@@ -31,7 +31,7 @@ public partial class RobocopyLogWindow : Window
     
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(RobocopyViewModel.LogOutput))
+        if (e.PropertyName == nameof(FileCopyViewModel.LogOutput))
         {
             // Auto-scroll to bottom when log output changes (if enabled)
             if (AutoScrollCheckBox.IsChecked == true && LogTextBox != null)

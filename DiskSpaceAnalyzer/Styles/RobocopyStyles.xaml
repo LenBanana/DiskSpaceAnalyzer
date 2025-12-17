@@ -1,5 +1,6 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:converters="clr-namespace:DiskSpaceAnalyzer.Converters">
     
     <!-- 
     ═══════════════════════════════════════════════════════════════
@@ -9,6 +10,9 @@
     Can be copied to any WPF project without dependencies.
     ═══════════════════════════════════════════════════════════════
     -->
+    
+    <!-- Converters -->
+    <converters:ProgressBarWidthConverter x:Key="ProgressBarWidthConverter" />
     
     <!-- Color Scheme -->
     <SolidColorBrush x:Key="Robocopy.Primary" Color="#FF2196F3"/>
@@ -315,6 +319,49 @@
                                        Foreground="White"
                                        FontWeight="Bold"
                                        FontSize="12"/>
+                        </Grid>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    
+    <!-- Verification ProgressBar Style (Green overlay for verification progress) -->
+    <Style x:Key="RobocopyVerificationProgressBarStyle" TargetType="ProgressBar">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Height" Value="28"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ProgressBar">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="4">
+                        <Grid x:Name="VerificationRoot">
+                            <Border x:Name="PART_Track" />
+                            <Border x:Name="PART_Indicator" 
+                                    HorizontalAlignment="Left"
+                                    CornerRadius="3"
+                                    Margin="2,2,2,2"
+                                    Opacity="0.7">
+                                <Border.Width>
+                                    <MultiBinding Converter="{StaticResource ProgressBarWidthConverter}">
+                                        <Binding Path="Value" RelativeSource="{RelativeSource TemplatedParent}"/>
+                                        <Binding Path="Minimum" RelativeSource="{RelativeSource TemplatedParent}"/>
+                                        <Binding Path="Maximum" RelativeSource="{RelativeSource TemplatedParent}"/>
+                                        <Binding Path="ActualWidth" ElementName="VerificationRoot"/>
+                                    </MultiBinding>
+                                </Border.Width>
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                        <GradientStop Color="#FF4CAF50" Offset="0"/>
+                                        <GradientStop Color="#FF66BB6A" Offset="0.5"/>
+                                        <GradientStop Color="#FF4CAF50" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                            </Border>
                         </Grid>
                     </Border>
                 </ControlTemplate>

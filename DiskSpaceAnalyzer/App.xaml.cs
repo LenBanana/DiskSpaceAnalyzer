@@ -1,5 +1,6 @@
 using System.Windows;
 using DiskSpaceAnalyzer.Services;
+using DiskSpaceAnalyzer.Services.FileCopy;
 using DiskSpaceAnalyzer.Services.Robocopy;
 using DiskSpaceAnalyzer.ViewModels;
 using DiskSpaceAnalyzer.Views;
@@ -24,6 +25,12 @@ public partial class App : Application
                 services.AddSingleton<IFileSystemService, ParallelFileSystemService>();
                 services.AddSingleton<IDialogService, DialogService>();
                 
+                // File Copy Services (generic infrastructure)
+                services.AddSingleton<DiskSpaceAnalyzer.Services.FileCopy.IFileIntegrityService, DiskSpaceAnalyzer.Services.FileCopy.FileIntegrityService>();
+                services.AddSingleton<IDirectoryScanService, DirectoryScanService>();
+                services.AddSingleton<NativeFileCopyService>();
+                services.AddSingleton<IFileCopyServiceFactory, FileCopyServiceFactory>();
+                
                 // Robocopy Module Services (completely modular)
                 services.AddSingleton<IRobocopyService, RobocopyService>();
                 services.AddSingleton<IExclusionPresetService, ExclusionPresetService>();
@@ -34,7 +41,7 @@ public partial class App : Application
 
                 // ViewModels
                 services.AddTransient<MainViewModel>();
-                services.AddTransient<RobocopyViewModel>();
+                services.AddTransient<FileCopyViewModel>();
 
                 // Views
                 services.AddTransient<MainWindow>();
