@@ -47,6 +47,10 @@ public class NativeFileCopyService : IFileCopyService
     private readonly List<FileOperationInfo> _filesToCopy = new();
     private readonly object _progressLock = new();
     
+    // Thread-safe progress throttling
+    private long _lastProgressReportTicks;
+    private long _lastProgressReportBytes;
+    
     // Configuration
     private const int DefaultBufferSize = 1024 * 1024; // 1 MB
     private const int ProgressReportIntervalMs = 100;
@@ -198,43 +202,58 @@ public class NativeFileCopyService : IFileCopyService
             ReportProgress(progress, FileCopyJobState.Running, $"Copying {_totalFiles:N0} files ({FormatBytes(_totalBytes)})...");
             
             // Phase 3: Start integrity verification if enabled
+            EventHandler<IntegrityProgress>? integrityHandler = null;
             if (options.EnableIntegrityCheck && options.IntegrityCheckMethod != IntegrityCheckMethod.None)
             {
                 _integrityService.Start(
                     options.IntegrityCheckMethod,
                     options.SourcePath,
                     options.DestinationPath,
+                    _totalFiles, // Pass total file count for accurate progress calculation
                     cancellationToken);
                 
-                _integrityService.ProgressChanged += (s, p) => OnIntegrityProgressChanged(progress, p);
+                // Subscribe to progress events
+                integrityHandler = (s, p) => OnIntegrityProgressChanged(progress, p);
+                _integrityService.ProgressChanged += integrityHandler;
             }
             
-            // Phase 4: Copy files in parallel
-            await CopyFilesParallelAsync(options, progress, cancellationToken);
-            
-            // Phase 5: Handle mirror mode (delete extra files at destination)
-            if (options.MirrorMode && !_isCancelled)
+            try
             {
-                await HandleMirrorModeAsync(options, progress, cancellationToken);
+                // Phase 4: Copy files in parallel
+                await CopyFilesParallelAsync(options, progress, cancellationToken);
+            
+                // Phase 5: Handle mirror mode (delete extra files at destination)
+                if (options.MirrorMode && !_isCancelled)
+                {
+                    await HandleMirrorModeAsync(options, progress, cancellationToken);
+                }
+                
+                // Phase 6: Wait for integrity verification to complete
+                if (options.EnableIntegrityCheck && options.IntegrityCheckMethod != IntegrityCheckMethod.None)
+                {
+                    ReportProgress(progress, FileCopyJobState.Verifying, "Verifying file integrity...");
+                    await _integrityService.WaitForCompletionAsync();
+                    
+                    var integrityProgress = _integrityService.GetProgress();
+                    result.IntegrityCheckEnabled = true;
+                    result.IntegrityCheckCompleted = true;
+                    result.IntegrityChecksPassed = integrityProgress.FilesPassed;
+                    result.IntegrityChecksFailed = integrityProgress.FilesFailed;
+                    result.IntegrityCheckDuration = integrityProgress.Elapsed;
+                    
+                    // Collect detailed failure information
+                    result.IntegrityResults = _integrityService.GetResults();
+                    
+                    await _integrityService.StopAsync();
+                }
             }
-            
-            // Phase 6: Wait for integrity verification to complete
-            if (options.EnableIntegrityCheck && options.IntegrityCheckMethod != IntegrityCheckMethod.None)
+            finally
             {
-                ReportProgress(progress, FileCopyJobState.Verifying, "Verifying file integrity...");
-                await _integrityService.WaitForCompletionAsync();
-                
-                var integrityProgress = _integrityService.GetProgress();
-                result.IntegrityCheckEnabled = true;
-                result.IntegrityCheckCompleted = true;
-                result.IntegrityChecksPassed = integrityProgress.FilesPassed;
-                result.IntegrityChecksFailed = integrityProgress.FilesFailed;
-                result.IntegrityCheckDuration = integrityProgress.Elapsed;
-                
-                // Collect detailed failure information
-                result.IntegrityResults = _integrityService.GetResults();
-                
-                await _integrityService.StopAsync();
+                // Clean up event handler
+                if (integrityHandler != null)
+                {
+                    _integrityService.ProgressChanged -= integrityHandler;
+                }
             }
             
             // Build final result
@@ -541,6 +560,13 @@ public class NativeFileCopyService : IFileCopyService
             return true;
         }
         
+        // Skip read-only files with matching size (e.g., Git objects, immutable content)
+        // Read-only files are typically content-addressed or database files that shouldn't change
+        if (destInfo.IsReadOnly && destInfo.Length == fileOp.Size)
+        {
+            return true;
+        }
+        
         return false;
     }
     
@@ -580,8 +606,12 @@ public class NativeFileCopyService : IFileCopyService
             CancellationToken = cancellationToken
         };
         
-        var progressStopwatch = Stopwatch.StartNew();
-        var lastReportedBytes = 0L;
+        // Initialize thread-safe progress tracking
+        Interlocked.Exchange(ref _lastProgressReportTicks, DateTime.Now.Ticks);
+        Interlocked.Exchange(ref _lastProgressReportBytes, 0L);
+        
+        // Thread-safe directory creation cache to avoid redundant calls
+        var createdDirectories = new ConcurrentDictionary<string, byte>();
         
         await Parallel.ForEachAsync(_filesToCopy, parallelOptions, async (fileOp, ct) =>
         {
@@ -604,11 +634,12 @@ public class NativeFileCopyService : IFileCopyService
                     _currentFileBytesCopied = 0;
                 }
                 
-                // Ensure destination directory exists
+                // Ensure destination directory exists (thread-safe)
                 var destDir = Path.GetDirectoryName(fileOp.DestinationPath);
-                if (!string.IsNullOrEmpty(destDir) && !Directory.Exists(destDir))
+                if (!string.IsNullOrEmpty(destDir) && createdDirectories.TryAdd(destDir, 0))
                 {
-                    Directory.CreateDirectory(destDir);
+                    // Only one thread will succeed in adding to the dictionary
+                    Directory.CreateDirectory(destDir); // Safe to call even if exists
                     Interlocked.Increment(ref _directoriesCopied);
                 }
                 
@@ -670,13 +701,24 @@ public class NativeFileCopyService : IFileCopyService
                     });
                 }
                 
-                // Report progress periodically
-                if (progressStopwatch.ElapsedMilliseconds >= ProgressReportIntervalMs ||
-                    _bytesCopied - lastReportedBytes >= ProgressReportIntervalBytes)
+                // Report progress periodically (thread-safe)
+                var currentTicks = DateTime.Now.Ticks;
+                var lastReportTicks = Interlocked.Read(ref _lastProgressReportTicks);
+                var elapsedMs = (currentTicks - lastReportTicks) / TimeSpan.TicksPerMillisecond;
+                
+                var currentBytes = Interlocked.Read(ref _bytesCopied);
+                var lastBytes = Interlocked.Read(ref _lastProgressReportBytes);
+                var bytesDelta = currentBytes - lastBytes;
+                
+                if (elapsedMs >= ProgressReportIntervalMs || bytesDelta >= ProgressReportIntervalBytes)
                 {
-                    ReportProgress(progress, FileCopyJobState.Running, $"Copying: {fileOp.RelativePath}");
-                    lastReportedBytes = _bytesCopied;
-                    progressStopwatch.Restart();
+                    // Try to update the last report time atomically
+                    if (Interlocked.CompareExchange(ref _lastProgressReportTicks, currentTicks, lastReportTicks) == lastReportTicks)
+                    {
+                        // We won the race - report progress
+                        Interlocked.Exchange(ref _lastProgressReportBytes, currentBytes);
+                        ReportProgress(progress, FileCopyJobState.Running, $"Copying: {fileOp.RelativePath}");
+                    }
                 }
             }
             catch (OperationCanceledException)
@@ -711,6 +753,16 @@ public class NativeFileCopyService : IFileCopyService
         }
         
         var buffer = new byte[bufferSize];
+        
+        // Remove read-only attribute from destination if it exists (e.g., Git objects)
+        if (File.Exists(fileOp.DestinationPath))
+        {
+            var destFileInfo = new FileInfo(fileOp.DestinationPath);
+            if (destFileInfo.IsReadOnly)
+            {
+                destFileInfo.IsReadOnly = false;
+            }
+        }
         
         using var sourceStream = new FileStream(fileOp.SourcePath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize, FileOptions.Asynchronous | FileOptions.SequentialScan);
         using var destStream = new FileStream(fileOp.DestinationPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize, FileOptions.Asynchronous | FileOptions.SequentialScan);
@@ -867,6 +919,15 @@ public class NativeFileCopyService : IFileCopyService
         
         var activeTime = DateTime.Now - _startTime - _totalPausedDuration;
         
+        // Get current verification progress (always check, not just when IsActive)
+        var integrityProgress = _integrityService.GetProgress();
+        long filesVerified = integrityProgress.FilesVerified;
+        long filesVerifiedPassed = integrityProgress.FilesPassed;
+        long filesVerifiedFailed = integrityProgress.FilesFailed;
+        long filesRetrying = integrityProgress.FilesRetrying;
+        long totalFilesForVerification = integrityProgress.TotalFiles;
+        string currentVerificationFile = integrityProgress.CurrentFile;
+        
         var progressData = new FileCopyProgress
         {
             State = state,
@@ -885,7 +946,14 @@ public class NativeFileCopyService : IFileCopyService
             CurrentFileSize = _currentFileSize,
             StartTime = _startTime,
             Elapsed = DateTime.Now - _startTime,
-            PausedDuration = _totalPausedDuration
+            PausedDuration = _totalPausedDuration,
+            // Include verification progress
+            FilesVerified = filesVerified,
+            FilesVerifiedPassed = filesVerifiedPassed,
+            FilesVerifiedFailed = filesVerifiedFailed,
+            FilesRetrying = filesRetrying,
+            TotalFilesForVerification = totalFilesForVerification,
+            CurrentVerificationFile = currentVerificationFile
         };
         
         progress.Report(progressData);
@@ -912,7 +980,13 @@ public class NativeFileCopyService : IFileCopyService
             CurrentFile = "",
             StartTime = result.StartTime,
             Elapsed = result.Duration,
-            PausedDuration = result.PausedDuration
+            PausedDuration = result.PausedDuration,
+            // Include final verification results
+            FilesVerified = result.IntegrityCheckEnabled ? result.IntegrityChecksPassed + result.IntegrityChecksFailed : 0,
+            FilesVerifiedPassed = result.IntegrityChecksPassed,
+            FilesVerifiedFailed = result.IntegrityChecksFailed,
+            FilesRetrying = 0,
+            CurrentVerificationFile = ""
         };
         
         progress.Report(progressData);
@@ -920,9 +994,42 @@ public class NativeFileCopyService : IFileCopyService
     
     private void OnIntegrityProgressChanged(IProgress<FileCopyProgress>? progress, IntegrityProgress integrityProgress)
     {
-        // Update progress with verification info in status message
+        if (progress == null)
+            return;
+        
+        // Update progress with verification info
         var message = $"Verifying: {integrityProgress.FilesVerified}/{integrityProgress.TotalFiles} files checked";
-        ReportProgress(progress, FileCopyJobState.Verifying, message);
+        var activeTime = DateTime.Now - _startTime - _totalPausedDuration;
+        
+        var progressData = new FileCopyProgress
+        {
+            State = FileCopyJobState.Verifying,
+            StatusMessage = message,
+            EngineType = CopyEngineType.Native,
+            FilesCopied = _filesCopied,
+            TotalFiles = _totalFiles,
+            DirectoriesCopied = _directoriesCopied,
+            TotalDirectories = _totalDirectories,
+            FilesFailed = _filesFailed,
+            FilesSkipped = _filesSkipped,
+            BytesCopied = _bytesCopied,
+            TotalBytes = _totalBytes,
+            CurrentFile = _currentFile,
+            CurrentFileBytesCopied = _currentFileBytesCopied,
+            CurrentFileSize = _currentFileSize,
+            StartTime = _startTime,
+            Elapsed = DateTime.Now - _startTime,
+            PausedDuration = _totalPausedDuration,
+            // Verification progress
+            FilesVerified = integrityProgress.FilesVerified,
+            FilesVerifiedPassed = integrityProgress.FilesPassed,
+            FilesVerifiedFailed = integrityProgress.FilesFailed,
+            FilesRetrying = integrityProgress.FilesRetrying,
+            TotalFilesForVerification = integrityProgress.TotalFiles,
+            CurrentVerificationFile = integrityProgress.CurrentFile
+        };
+        
+        progress.Report(progressData);
     }
     
     #endregion

@@ -70,6 +70,7 @@ public class FileIntegrityService : IFileIntegrityService
     private long _filesFailed;
     private long _bytesVerified;
     private long _totalBytesQueued;
+    private long _totalFilesQueued; // Track total files queued for accurate percentage
     private string _currentFile = string.Empty;
     private bool _isActive;
     private bool _isComplete;
@@ -86,7 +87,7 @@ public class FileIntegrityService : IFileIntegrityService
     public event EventHandler<IntegrityCheckResult>? FileVerified;
     public event EventHandler<IntegrityProgress>? ProgressChanged;
     
-    public void Start(IntegrityCheckMethod method, string sourcePath, string destinationPath, CancellationToken cancellationToken)
+    public void Start(IntegrityCheckMethod method, string sourcePath, string destinationPath, long totalFiles, CancellationToken cancellationToken)
     {
         if (method == IntegrityCheckMethod.None)
             return;
@@ -103,6 +104,7 @@ public class FileIntegrityService : IFileIntegrityService
         _filesFailed = 0;
         _bytesVerified = 0;
         _totalBytesQueued = 0;
+        _totalFilesQueued = totalFiles; // Initialize with expected total for accurate progress
         
         lock (_resultsLock)
         {
@@ -148,7 +150,7 @@ public class FileIntegrityService : IFileIntegrityService
         if (_method == IntegrityCheckMethod.None || !_isActive)
             return;
         
-        // Update total bytes
+        // Track total bytes (but not files - total file count is set in Start())
         Interlocked.Add(ref _totalBytesQueued, fileInfo.FileSize);
         
         // Route to appropriate channel based on file size
@@ -212,7 +214,7 @@ public class FileIntegrityService : IFileIntegrityService
             return new IntegrityProgress
             {
                 FilesVerified = _filesVerified,
-                TotalFiles = _filesVerified + totalQueued + queueFailureCount + _filesRetrying,
+                TotalFiles = _totalFilesQueued,
                 FilesPassed = _filesPassed,
                 FilesFailed = _filesFailed + queueFailureCount,
                 FilesQueued = totalQueued,

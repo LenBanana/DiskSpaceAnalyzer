@@ -88,12 +88,15 @@ public class FileCopyProgress
     /// <summary>Number of files currently being retried due to verification failure.</summary>
     public long FilesRetrying { get; init; }
     
+    /// <summary>Total number of files queued for verification.</summary>
+    public long TotalFilesForVerification { get; init; }
+    
     /// <summary>Current file being verified (if in verification phase).</summary>
     public string CurrentVerificationFile { get; init; } = string.Empty;
     
     /// <summary>Verification progress percentage (0-100).</summary>
-    public double VerificationPercentComplete => FilesCopied > 0 
-        ? Math.Min(100, FilesVerified * 100.0 / FilesCopied) 
+    public double VerificationPercentComplete => TotalFilesForVerification > 0 
+        ? Math.Min(100, FilesVerified * 100.0 / TotalFilesForVerification) 
         : 0;
     
     // Calculated properties

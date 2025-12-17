@@ -19,6 +19,7 @@ public interface IFileIntegrityService
     /// <param name="method">Verification method to use (Metadata, MD5, SHA256, XXHash64, Blake3).</param>
     /// <param name="sourcePath">Root source path for relative path calculation.</param>
     /// <param name="destinationPath">Root destination path for relative path calculation.</param>
+    /// <param name="totalFiles">Total number of files to be verified (for accurate progress calculation).</param>
     /// <param name="cancellationToken">Cancellation token to stop verification.</param>
     /// <remarks>
     /// This method prepares the service for verification but doesn't start processing.
@@ -27,7 +28,8 @@ public interface IFileIntegrityService
     void Start(
         IntegrityCheckMethod method, 
         string sourcePath, 
-        string destinationPath, 
+        string destinationPath,
+        long totalFiles,
         CancellationToken cancellationToken);
     
     /// <summary>
