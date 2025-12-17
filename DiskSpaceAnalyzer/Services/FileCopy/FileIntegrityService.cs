@@ -13,27 +13,9 @@ using DiskSpaceAnalyzer.Models.FileCopy;
 namespace DiskSpaceAnalyzer.Services.FileCopy;
 
 /// <summary>
-/// High-performance file integrity verification service with parallel processing.
-/// 
-/// PERFORMANCE CHARACTERISTICS:
-/// - xxHash64: ~2-5 GB/s (10-25× faster than old SHA256)
-/// - BLAKE3: ~5-15 GB/s (20-50× faster than old SHA256)
-/// - SHA256: ~250-400 MB/s (1.5-2× faster with optimization)
-/// - MD5: ~300-500 MB/s (1.5-2× faster with optimization)
-/// 
-/// ARCHITECTURE:
-/// - Separate pipelines for small (<10MB) and large (>=10MB) files
-/// - 8 parallel workers for small files (I/O bound, high concurrency)
-/// - 4 parallel workers for large files (bandwidth bound, lower concurrency)
-/// - Buffer pooling with ArrayPool (zero GC pressure)
-/// - 1MB buffers for optimal throughput
-/// - Memory-mapped I/O for files >100MB
-/// - Channel-based backpressure control
-/// 
-/// ERROR HANDLING:
-/// - Tracks queue write failures (files that couldn't be queued for verification)
-/// - Reports failures in progress metrics
-/// - Non-blocking queue writes to avoid blocking copy operation
+/// Implementation of IFileIntegrityService for verifying file integrity after copy operations.
+/// Engine-agnostic - can be used by any copy engine (Robocopy, Native, etc.).
+/// Supports multiple verification methods from quick metadata checks to cryptographic hashes.
 /// </summary>
 public class FileIntegrityService : IFileIntegrityService
 {
