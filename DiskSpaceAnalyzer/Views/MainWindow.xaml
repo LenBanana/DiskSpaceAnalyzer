@@ -20,6 +20,7 @@
     <Window.Resources>
         <converters:SortModeToOpacityConverter x:Key="SortModeToOpacityConverter" />
         <converters:ScanEngineDisplayConverter x:Key="ScanEngineDisplayConverter" />
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
 
         <!-- Storyboard for loading animation -->
         <Storyboard x:Key="LoadingAnimation" RepeatBehavior="Forever">
