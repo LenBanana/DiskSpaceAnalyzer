@@ -5,8 +5,8 @@ using System.Windows.Data;
 namespace DiskSpaceAnalyzer.Converters;
 
 /// <summary>
-/// Converts an enum value to a boolean for radio button binding.
-/// The parameter should be the enum value name as a string.
+///     Converts an enum value to a boolean for radio button binding.
+///     The parameter should be the enum value name as a string.
 /// </summary>
 public class EnumToBoolConverter : IValueConverter
 {
@@ -17,7 +17,7 @@ public class EnumToBoolConverter : IValueConverter
 
         var enumValue = value.ToString();
         var targetValue = parameter.ToString();
-        
+
         return string.Equals(enumValue, targetValue, StringComparison.OrdinalIgnoreCase);
     }
 

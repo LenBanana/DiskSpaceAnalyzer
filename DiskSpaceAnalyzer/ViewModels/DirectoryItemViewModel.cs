@@ -9,21 +9,21 @@ namespace DiskSpaceAnalyzer.ViewModels;
 
 public partial class DirectoryItemViewModel : BaseViewModel
 {
+    private long? _cachedSubdirectoriesSize;
+
+    // Cached computed values
+    private long? _cachedTotalFilesSize;
+
+    [ObservableProperty] private string _currentSortMode = "Size";
     [ObservableProperty] private DirectoryItem _directoryItem;
 
     [ObservableProperty] private bool _isExpanded;
 
-    [ObservableProperty] private bool _isSelected;
-
     [ObservableProperty] private bool _isFilesExpanded;
 
+    [ObservableProperty] private bool _isSelected;
+
     [ObservableProperty] private bool _showAllFiles;
-
-    [ObservableProperty] private string _currentSortMode = "Size";
-
-    // Cached computed values
-    private long? _cachedTotalFilesSize;
-    private long? _cachedSubdirectoriesSize;
 
     public DirectoryItemViewModel(DirectoryItem directoryItem, DirectoryItemViewModel? parent = null)
     {
@@ -57,7 +57,7 @@ public partial class DirectoryItemViewModel : BaseViewModel
     public bool FilesNotTracked => DirectoryItem.FileCount > 0 && DirectoryItem.Files.Count == 0;
     public int TotalFileCount => DirectoryItem.Files.Count;
     public bool HasMoreFiles => TotalFileCount > 10;
-    
+
     public string FileCountText
     {
         get
@@ -67,33 +67,27 @@ public partial class DirectoryItemViewModel : BaseViewModel
             return $"Top {Math.Min(10, TotalFileCount)} of {TotalFileCount:N0} files";
         }
     }
-    
+
     public long TotalFilesSize
     {
         get
         {
-            if (_cachedTotalFilesSize == null)
-            {
-                _cachedTotalFilesSize = DirectoryItem.Files.Sum(f => f.Size);
-            }
+            if (_cachedTotalFilesSize == null) _cachedTotalFilesSize = DirectoryItem.Files.Sum(f => f.Size);
             return _cachedTotalFilesSize.Value;
         }
     }
-    
+
     public string FormattedFilesSize => FormatBytes(TotalFilesSize);
-    
+
     public long SubdirectoriesSize
     {
         get
         {
-            if (_cachedSubdirectoriesSize == null)
-            {
-                _cachedSubdirectoriesSize = Size - TotalFilesSize;
-            }
+            if (_cachedSubdirectoriesSize == null) _cachedSubdirectoriesSize = Size - TotalFilesSize;
             return _cachedSubdirectoriesSize.Value;
         }
     }
-    
+
     public string FormattedSubdirectoriesSize => FormatBytes(SubdirectoriesSize);
 
     private void LoadChildren()
@@ -107,15 +101,12 @@ public partial class DirectoryItemViewModel : BaseViewModel
         Files.Clear();
         TopFiles.Clear();
         DisplayedFiles.Clear();
-        
+
         // Invalidate cached values
         _cachedTotalFilesSize = null;
         _cachedSubdirectoriesSize = null;
-        
-        foreach (var file in DirectoryItem.Files)
-        {
-            Files.Add(new FileItemViewModel(file, this));
-        }
+
+        foreach (var file in DirectoryItem.Files) Files.Add(new FileItemViewModel(file, this));
 
         // Load top 10 files by size for quick display
         var topFiles = DirectoryItem.Files
@@ -143,17 +134,14 @@ public partial class DirectoryItemViewModel : BaseViewModel
     {
         DisplayedFiles.Clear();
         var filesToShow = ShowAllFiles ? Files : TopFiles;
-        foreach (var file in filesToShow)
-        {
-            DisplayedFiles.Add(file);
-        }
+        foreach (var file in filesToShow) DisplayedFiles.Add(file);
     }
 
     [RelayCommand]
     private void SortFilesBy(string sortMode)
     {
         CurrentSortMode = sortMode;
-        
+
         var sorted = sortMode switch
         {
             "Size" => Files.OrderByDescending(f => f.Size).ToList(),
@@ -163,10 +151,7 @@ public partial class DirectoryItemViewModel : BaseViewModel
         };
 
         Files.Clear();
-        foreach (var file in sorted)
-        {
-            Files.Add(file);
-        }
+        foreach (var file in sorted) Files.Add(file);
 
         UpdateDisplayedFiles();
     }

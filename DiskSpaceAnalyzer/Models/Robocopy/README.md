@@ -1,9 +1,12 @@
 # Robocopy Module - Self-Contained File Copy Tool
 
 ## Overview
-A complete, production-ready WPF wrapper for Windows Robocopy with real-time progress tracking, pause/resume functionality, and comprehensive error handling.
+
+A complete, production-ready WPF wrapper for Windows Robocopy with real-time progress tracking, pause/resume
+functionality, and comprehensive error handling.
 
 ## Features
+
 - ✅ **Real-time progress tracking** - See bytes copied, files processed, transfer speed, and ETA
 - ✅ **Pre-scan** - Calculates total size before copying for accurate progress
 - ✅ **Pause/Resume** - True process suspension (not restart-based)
@@ -16,6 +19,7 @@ A complete, production-ready WPF wrapper for Windows Robocopy with real-time pro
 ## Architecture
 
 ### Models (`Models/Robocopy/`)
+
 - `RobocopyOptions.cs` - Configuration with validation
 - `RobocopyProgress.cs` - Immutable progress data
 - `RobocopyResult.cs` - Final results with statistics
@@ -24,6 +28,7 @@ A complete, production-ready WPF wrapper for Windows Robocopy with real-time pro
 - `RobocopyPreset.cs` - Common presets
 
 ### Services (`Services/Robocopy/`)
+
 - `IRobocopyService.cs` - Main service interface
 - `RobocopyService.cs` - Core implementation
 - `RobocopyLogParser.cs` - Parses robocopy output
@@ -31,6 +36,7 @@ A complete, production-ready WPF wrapper for Windows Robocopy with real-time pro
 - `ProcessSuspender.cs` - P/Invoke for pause/resume
 
 ### UI (`Views/Robocopy/`, `ViewModels/`, `Styles/`)
+
 - `RobocopyWindow.xaml` - Main window
 - `RobocopyViewModel.cs` - ViewModel with commands
 - `RobocopyStyles.xaml` - Self-contained styles
@@ -38,6 +44,7 @@ A complete, production-ready WPF wrapper for Windows Robocopy with real-time pro
 ## How to Copy to Another Project
 
 ### 1. Copy Files
+
 ```
 Copy these folders:
 - Models/Robocopy/         → Your project
@@ -48,6 +55,7 @@ Copy these folders:
 ```
 
 ### 2. Register Services (in App.xaml.cs or Startup.cs)
+
 ```csharp
 services.AddSingleton<IRobocopyService, RobocopyService>();
 services.AddSingleton<ProcessSuspender>();
@@ -58,13 +66,16 @@ services.AddTransient<RobocopyWindow>();
 ```
 
 ### 3. Dependencies Required
+
 - `CommunityToolkit.Mvvm` (8.2.2+)
 - `Microsoft.Extensions.DependencyInjection`
 - An `IFileSystemService` implementation for pre-scanning (or remove that feature)
 - An `IDialogService` for folder browser (or use standard dialogs)
 
 ### 4. Optional: Remove Pre-Scan
+
 If you don't have IFileSystemService, in `RobocopyService.cs`:
+
 ```csharp
 // Comment out or remove PreScanSourceAsync() call
 // Set fixed values or skip progress calculation
@@ -73,6 +84,7 @@ If you don't have IFileSystemService, in `RobocopyService.cs`:
 ## Usage Example
 
 ### Open Window from Button
+
 ```csharp
 [RelayCommand]
 private void OpenRobocopy()
@@ -83,6 +95,7 @@ private void OpenRobocopy()
 ```
 
 ### Programmatic Usage
+
 ```csharp
 var options = new RobocopyOptions
 {
@@ -110,6 +123,7 @@ Console.WriteLine($"Exit Code: {result.ExitCode} - {result.ExitCodeMessage}");
 ## Configuration Options
 
 ### Presets
+
 - **Copy** - Basic recursive copy
 - **Sync** - Copy and skip older files
 - **Mirror** - ⚠️ Copy and delete extra files at destination
@@ -117,6 +131,7 @@ Console.WriteLine($"Exit Code: {result.ExitCode} - {result.ExitCodeMessage}");
 - **Custom** - Full manual control
 
 ### Advanced Options
+
 - Multi-threading (1-128 threads)
 - Mirror mode (deletes at destination)
 - Backup mode (requires admin for some files)
@@ -127,7 +142,9 @@ Console.WriteLine($"Exit Code: {result.ExitCode} - {result.ExitCodeMessage}");
 - Retry count and wait time
 
 ## Exit Codes
+
 Robocopy uses bitwise exit codes (0-16):
+
 - `0` - No changes, already up to date
 - `1` - Files copied successfully
 - `2` - Extra files detected
@@ -138,7 +155,9 @@ Robocopy uses bitwise exit codes (0-16):
 Codes can be combined (e.g., `3` = files copied + extra files).
 
 ## Error Handling
+
 All robocopy errors are captured and parsed:
+
 - Error code (e.g., 5 = Access Denied)
 - Hex code (e.g., 0x00000005)
 - File path that caused the error
@@ -146,6 +165,7 @@ All robocopy errors are captured and parsed:
 - Timestamp
 
 Common errors:
+
 - `5` - Access denied
 - `32` - File in use
 - `123` - Invalid filename
@@ -153,19 +173,23 @@ Common errors:
 - `1314` - Privilege not held
 
 ## Pause/Resume Implementation
+
 Uses Windows kernel32.dll functions:
+
 - `SuspendThread()` - Suspends all robocopy threads
 - `ResumeThread()` - Resumes all threads
 
 The process stays in memory while paused, preserving all state.
 
 ## Performance Notes
+
 - Pre-scan uses parallel directory scanning (fast)
 - Log file parsed every 500ms during copy (low overhead)
 - Multi-threading enabled by default (8 threads)
 - Progress calculation is approximate during copy, accurate at end
 
 ## Testing Checklist
+
 - [ ] Small folder copy (< 100 MB)
 - [ ] Large folder copy (> 1 GB)
 - [ ] Pause/Resume during copy
@@ -176,6 +200,7 @@ The process stays in memory while paused, preserving all state.
 - [ ] Source = Destination validation
 
 ## Future Enhancements
+
 - [ ] Copy presets save/load
 - [ ] Scheduled copies
 - [ ] Job history
@@ -185,9 +210,11 @@ The process stays in memory while paused, preserving all state.
 - [ ] File filtering by date/attributes
 
 ## License
+
 This module is part of DiskSpaceAnalyzer and can be freely used/modified.
 
 ## Notes
+
 - Robocopy.exe must be present (Windows Vista+)
 - Some options require admin privileges (backup mode, security)
 - Mirror mode is DANGEROUS - it deletes files at destination

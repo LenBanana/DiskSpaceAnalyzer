@@ -5,8 +5,8 @@ using System.Windows.Data;
 namespace DiskSpaceAnalyzer.Converters;
 
 /// <summary>
-/// Converts a ProgressBar's Value, Minimum, Maximum, and ActualWidth to the indicator width.
-/// Used for custom progress bar templates to calculate the width of the progress indicator.
+///     Converts a ProgressBar's Value, Minimum, Maximum, and ActualWidth to the indicator width.
+///     Used for custom progress bar templates to calculate the width of the progress indicator.
 /// </summary>
 public class ProgressBarWidthConverter : IMultiValueConverter
 {
@@ -17,15 +17,10 @@ public class ProgressBarWidthConverter : IMultiValueConverter
             values[1] is not double minimum ||
             values[2] is not double maximum ||
             values[3] is not double actualWidth)
-        {
             return 0.0;
-        }
 
         // Prevent division by zero
-        if (maximum <= minimum || actualWidth <= 0)
-        {
-            return 0.0;
-        }
+        if (maximum <= minimum || actualWidth <= 0) return 0.0;
 
         // Calculate the percentage and multiply by actual width
         var percentage = (value - minimum) / (maximum - minimum);

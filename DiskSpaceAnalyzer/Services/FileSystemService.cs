@@ -11,13 +11,13 @@ namespace DiskSpaceAnalyzer.Services;
 public class FileSystemService : IFileSystemService
 {
     private const int MaxFilesPerDirectory = 10_000;
-
-    public bool TrackIndividualFiles { get; set; } = true;
+    private long _totalDirectories;
 
     // Sequential scan; these fields are only ever written from one async
     // continuation at a time, so no Interlocked is required.
     private long _totalFiles;
-    private long _totalDirectories;
+
+    public bool TrackIndividualFiles { get; set; } = true;
 
     public async Task<ScanResult> ScanDirectoryAsync(string path, ScanMode mode, IProgress<ScanProgress> progress,
         CancellationToken cancellationToken)
@@ -59,12 +59,17 @@ public class FileSystemService : IFileSystemService
         return result;
     }
 
-    public IEnumerable<string> GetDrives() =>
-        DriveInfo.GetDrives()
+    public IEnumerable<string> GetDrives()
+    {
+        return DriveInfo.GetDrives()
             .Where(d => d.IsReady)
             .Select(d => d.RootDirectory.FullName);
+    }
 
-    public bool DirectoryExists(string path) => Directory.Exists(path);
+    public bool DirectoryExists(string path)
+    {
+        return Directory.Exists(path);
+    }
 
     public DirectoryItem GetDirectoryInfo(string path)
     {
@@ -106,10 +111,8 @@ public class FileSystemService : IFileSystemService
             try
             {
                 foreach (var entry in dirInfo.EnumerateFileSystemInfos())
-                {
                     if (entry is FileInfo fi) files.Add(fi);
                     else if (entry is DirectoryInfo di) subdirs.Add(di);
-                }
             }
             catch (UnauthorizedAccessException)
             {
@@ -130,9 +133,7 @@ public class FileSystemService : IFileSystemService
             long totalSize = 0;
 
             if (TrackIndividualFiles && files.Count > 0 && files.Count <= MaxFilesPerDirectory)
-            {
                 foreach (var file in files)
-                {
                     try
                     {
                         var fileSize = file.Length;
@@ -150,16 +151,16 @@ public class FileSystemService : IFileSystemService
                     {
                         errors.Add($"Cannot access file {file.FullName}: {ex.Message}");
                     }
-                }
-            }
             else
-            {
                 foreach (var file in files)
-                {
-                    try { totalSize += file.Length; }
-                    catch (Exception ex) { errors.Add($"Cannot access file {file.FullName}: {ex.Message}"); }
-                }
-            }
+                    try
+                    {
+                        totalSize += file.Length;
+                    }
+                    catch (Exception ex)
+                    {
+                        errors.Add($"Cannot access file {file.FullName}: {ex.Message}");
+                    }
 
             foreach (var subDir in subdirs)
             {
@@ -282,7 +283,6 @@ public class FileSystemService : IFileSystemService
             {
                 // Single-pass enumeration: one directory read for both files and subdirs.
                 foreach (var entry in currentDir.EnumerateFileSystemInfos())
-                {
                     try
                     {
                         if (entry is FileInfo fi)
@@ -299,7 +299,6 @@ public class FileSystemService : IFileSystemService
                     {
                         errors.Add($"Cannot access entry {entry.FullName}: {ex.Message}");
                     }
-                }
             }
             catch (UnauthorizedAccessException)
             {

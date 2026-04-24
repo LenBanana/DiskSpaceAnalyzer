@@ -14,10 +14,7 @@ public class FileSizeConverter : IValueConverter
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
-        if (value is string str && long.TryParse(str, out var bytes))
-        {
-            return bytes;
-        }
+        if (value is string str && long.TryParse(str, out var bytes)) return bytes;
 
         return 0L; // Default to 0 if conversion fails
     }

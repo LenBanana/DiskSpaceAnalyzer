@@ -28,13 +28,13 @@
 
     <!-- Gradient Brushes -->
     <LinearGradientBrush x:Key="AccentGradientBrush" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#FF00D4FF" Offset="0"/>
-        <GradientStop Color="#FF0099CC" Offset="1"/>
+        <GradientStop Color="#FF00D4FF" Offset="0" />
+        <GradientStop Color="#FF0099CC" Offset="1" />
     </LinearGradientBrush>
 
     <LinearGradientBrush x:Key="CardGradientBrush" StartPoint="0,0" EndPoint="0,1">
-        <GradientStop Color="#FF3A3A3C" Offset="0"/>
-        <GradientStop Color="#FF2D2D30" Offset="1"/>
+        <GradientStop Color="#FF3A3A3C" Offset="0" />
+        <GradientStop Color="#FF2D2D30" Offset="1" />
     </LinearGradientBrush>
 
     <!-- Modern Button Style with Enhanced Effects -->
@@ -56,7 +56,7 @@
                             BorderThickness="{TemplateBinding BorderThickness}"
                             BorderBrush="{TemplateBinding BorderBrush}">
                         <Border.Effect>
-                            <DropShadowEffect Color="Black" ShadowDepth="2" BlurRadius="8" Opacity="0.3"/>
+                            <DropShadowEffect Color="Black" ShadowDepth="2" BlurRadius="8" Opacity="0.3" />
                         </Border.Effect>
                         <ContentPresenter HorizontalAlignment="Center"
                                           VerticalAlignment="Center"
@@ -67,14 +67,14 @@
                             <Setter TargetName="MainBorder" Property="Background">
                                 <Setter.Value>
                                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                        <GradientStop Color="#FF1BE7FF" Offset="0"/>
-                                        <GradientStop Color="#FF00B8D4" Offset="1"/>
+                                        <GradientStop Color="#FF1BE7FF" Offset="0" />
+                                        <GradientStop Color="#FF00B8D4" Offset="1" />
                                     </LinearGradientBrush>
                                 </Setter.Value>
                             </Setter>
                             <Setter TargetName="MainBorder" Property="Effect">
                                 <Setter.Value>
-                                    <DropShadowEffect Color="Black" ShadowDepth="4" BlurRadius="12" Opacity="0.4"/>
+                                    <DropShadowEffect Color="Black" ShadowDepth="4" BlurRadius="12" Opacity="0.4" />
                                 </Setter.Value>
                             </Setter>
                         </Trigger>
@@ -82,14 +82,14 @@
                             <Setter TargetName="MainBorder" Property="Background">
                                 <Setter.Value>
                                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                        <GradientStop Color="#FF0099CC" Offset="0"/>
-                                        <GradientStop Color="#FF007399" Offset="1"/>
+                                        <GradientStop Color="#FF0099CC" Offset="0" />
+                                        <GradientStop Color="#FF007399" Offset="1" />
                                     </LinearGradientBrush>
                                 </Setter.Value>
                             </Setter>
                             <Setter TargetName="MainBorder" Property="Effect">
                                 <Setter.Value>
-                                    <DropShadowEffect Color="Black" ShadowDepth="1" BlurRadius="4" Opacity="0.6"/>
+                                    <DropShadowEffect Color="Black" ShadowDepth="1" BlurRadius="4" Opacity="0.6" />
                                 </Setter.Value>
                             </Setter>
                         </Trigger>
@@ -123,7 +123,7 @@
                             BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="6">
                         <Border.Effect>
-                            <DropShadowEffect Color="Black" ShadowDepth="1" BlurRadius="3" Opacity="0.2"/>
+                            <DropShadowEffect Color="Black" ShadowDepth="1" BlurRadius="3" Opacity="0.2" />
                         </Border.Effect>
                         <ScrollViewer x:Name="PART_ContentHost"
                                       Focusable="False"
@@ -137,7 +137,7 @@
                             <Setter TargetName="MainBorder" Property="BorderThickness" Value="2" />
                             <Setter TargetName="MainBorder" Property="Effect">
                                 <Setter.Value>
-                                    <DropShadowEffect Color="#FF00D4FF" ShadowDepth="0" BlurRadius="8" Opacity="0.4"/>
+                                    <DropShadowEffect Color="#FF00D4FF" ShadowDepth="0" BlurRadius="8" Opacity="0.4" />
                                 </Setter.Value>
                             </Setter>
                         </Trigger>
@@ -172,7 +172,7 @@
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="6">
                             <Border.Effect>
-                                <DropShadowEffect Color="Black" ShadowDepth="1" BlurRadius="3" Opacity="0.2"/>
+                                <DropShadowEffect Color="Black" ShadowDepth="1" BlurRadius="3" Opacity="0.2" />
                             </Border.Effect>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -230,7 +230,7 @@
                                         CornerRadius="6"
                                         Margin="0,2,0,0">
                                     <Border.Effect>
-                                        <DropShadowEffect Color="Black" ShadowDepth="3" BlurRadius="10" Opacity="0.4"/>
+                                        <DropShadowEffect Color="Black" ShadowDepth="3" BlurRadius="10" Opacity="0.4" />
                                     </Border.Effect>
                                     <ScrollViewer x:Name="DropDownScrollViewer" Margin="4">
                                         <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
@@ -282,7 +282,8 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsHighlighted" Value="True">
-                            <Setter TargetName="ItemBorder" Property="Background" Value="{StaticResource AccentGradientBrush}" />
+                            <Setter TargetName="ItemBorder" Property="Background"
+                                    Value="{StaticResource AccentGradientBrush}" />
                             <Setter Property="Foreground" Value="White" />
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
@@ -315,7 +316,7 @@
                             BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="6">
                         <Border.Effect>
-                            <DropShadowEffect Color="Black" ShadowDepth="1" BlurRadius="3" Opacity="0.2"/>
+                            <DropShadowEffect Color="Black" ShadowDepth="1" BlurRadius="3" Opacity="0.2" />
                         </Border.Effect>
                         <ContentPresenter HorizontalAlignment="Center"
                                           VerticalAlignment="Center"
@@ -323,11 +324,12 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="MainBorder" Property="Background" Value="{StaticResource AccentGradientBrush}" />
+                            <Setter TargetName="MainBorder" Property="Background"
+                                    Value="{StaticResource AccentGradientBrush}" />
                             <Setter Property="Foreground" Value="White" />
                             <Setter TargetName="MainBorder" Property="Effect">
                                 <Setter.Value>
-                                    <DropShadowEffect Color="#FF00D4FF" ShadowDepth="0" BlurRadius="8" Opacity="0.5"/>
+                                    <DropShadowEffect Color="#FF00D4FF" ShadowDepth="0" BlurRadius="8" Opacity="0.5" />
                                 </Setter.Value>
                             </Setter>
                         </Trigger>
@@ -335,7 +337,8 @@
                             <Setter TargetName="MainBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="MainBorder" Property="Background" Value="{StaticResource AccentPressedBrush}" />
+                            <Setter TargetName="MainBorder" Property="Background"
+                                    Value="{StaticResource AccentPressedBrush}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -353,7 +356,7 @@
         <Setter Property="Margin" Value="8" />
         <Setter Property="Effect">
             <Setter.Value>
-                <DropShadowEffect Color="Black" ShadowDepth="2" BlurRadius="8" Opacity="0.3"/>
+                <DropShadowEffect Color="Black" ShadowDepth="2" BlurRadius="8" Opacity="0.3" />
             </Setter.Value>
         </Setter>
     </Style>
@@ -370,7 +373,7 @@
                     <Border Background="{TemplateBinding Background}" CornerRadius="3">
                         <Grid>
                             <Border x:Name="PART_Track" CornerRadius="3" />
-                            <Border x:Name="PART_Indicator" 
+                            <Border x:Name="PART_Indicator"
                                     Background="{TemplateBinding Foreground}"
                                     HorizontalAlignment="Left"
                                     CornerRadius="3" />

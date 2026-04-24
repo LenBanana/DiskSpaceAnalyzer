@@ -8,19 +8,18 @@
         WindowStartupLocation="CenterOwner"
         Background="#FF1E1E1E"
         ResizeMode="CanResize">
-    
+
     <Window.Resources>
-        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
-        
+
         <!-- Modern Button Style -->
         <Style x:Key="ModernButtonStyle" TargetType="Button">
-            <Setter Property="Background" Value="#FF2D2D30"/>
-            <Setter Property="Foreground" Value="#FFE0E0E0"/>
-            <Setter Property="BorderBrush" Value="#FF3E3E42"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="15,8"/>
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Background" Value="#FF2D2D30" />
+            <Setter Property="Foreground" Value="#FFE0E0E0" />
+            <Setter Property="BorderBrush" Value="#FF3E3E42" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="15,8" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -29,15 +28,15 @@
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="4">
                             <ContentPresenter HorizontalAlignment="Center"
-                                            VerticalAlignment="Center"
-                                            Margin="{TemplateBinding Padding}"/>
+                                              VerticalAlignment="Center"
+                                              Margin="{TemplateBinding Padding}" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="#FF3E3E42"/>
+                                <Setter Property="Background" Value="#FF3E3E42" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter Property="Background" Value="#FF007ACC"/>
+                                <Setter Property="Background" Value="#FF007ACC" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -45,55 +44,55 @@
             </Setter>
         </Style>
     </Window.Resources>
-    
+
     <Grid Margin="20">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
-        
+
         <!-- Header -->
         <StackPanel Grid.Row="0" Margin="0,0,0,20">
             <TextBlock Text="{Binding Title}"
                        FontSize="24"
                        FontWeight="Bold"
                        Foreground="#FFF44336"
-                       Margin="0,0,0,10"/>
-            
+                       Margin="0,0,0,10" />
+
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                
+
                 <StackPanel Grid.Column="0" Orientation="Horizontal">
                     <TextBlock Text="Total Failed: "
                                FontSize="14"
                                Foreground="#FF888888"
-                               VerticalAlignment="Center"/>
+                               VerticalAlignment="Center" />
                     <TextBlock Text="{Binding TotalFailed}"
                                FontSize="14"
                                FontWeight="Bold"
                                Foreground="#FFF44336"
                                VerticalAlignment="Center"
-                               Margin="5,0,20,0"/>
-                    
+                               Margin="5,0,20,0" />
+
                     <TextBlock Text="Method: "
                                FontSize="14"
                                Foreground="#FF888888"
-                               VerticalAlignment="Center"/>
+                               VerticalAlignment="Center" />
                     <TextBlock Text="{Binding MethodName}"
                                FontSize="14"
                                FontWeight="Bold"
                                Foreground="#FF00BCD4"
                                VerticalAlignment="Center"
-                               Margin="5,0,0,0"/>
+                               Margin="5,0,0,0" />
                 </StackPanel>
             </Grid>
         </StackPanel>
-        
+
         <!-- Search Box -->
         <Border Grid.Row="1"
                 Background="#FF2D2D30"
@@ -104,17 +103,17 @@
                 Margin="0,0,0,15">
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                
+
                 <TextBlock Grid.Column="0"
                            Text="🔍"
                            FontSize="16"
                            VerticalAlignment="Center"
                            Margin="0,0,10,0"
-                           Foreground="#FF888888"/>
-                
+                           Foreground="#FF888888" />
+
                 <TextBox Grid.Column="1"
                          Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                          Background="Transparent"
@@ -131,8 +130,8 @@
                                             <VisualBrush Stretch="None" AlignmentX="Left">
                                                 <VisualBrush.Visual>
                                                     <TextBlock Text="Search by file path or error message..."
-                                                             Foreground="#FF666666"
-                                                             FontSize="13"/>
+                                                               Foreground="#FF666666"
+                                                               FontSize="13" />
                                                 </VisualBrush.Visual>
                                             </VisualBrush>
                                         </Setter.Value>
@@ -144,7 +143,7 @@
                 </TextBox>
             </Grid>
         </Border>
-        
+
         <!-- Data Grid -->
         <Border Grid.Row="2"
                 Background="#FF252526"
@@ -166,93 +165,93 @@
                       AlternatingRowBackground="#FF2D2D30"
                       Foreground="#FFE0E0E0"
                       FontSize="12">
-                
+
                 <DataGrid.ColumnHeaderStyle>
                     <Style TargetType="DataGridColumnHeader">
-                        <Setter Property="Background" Value="#FF2D2D30"/>
-                        <Setter Property="Foreground" Value="#FFE0E0E0"/>
-                        <Setter Property="FontWeight" Value="Bold"/>
-                        <Setter Property="Padding" Value="10,8"/>
-                        <Setter Property="BorderBrush" Value="#FF3E3E42"/>
-                        <Setter Property="BorderThickness" Value="0,0,0,1"/>
-                        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                        <Setter Property="Background" Value="#FF2D2D30" />
+                        <Setter Property="Foreground" Value="#FFE0E0E0" />
+                        <Setter Property="FontWeight" Value="Bold" />
+                        <Setter Property="Padding" Value="10,8" />
+                        <Setter Property="BorderBrush" Value="#FF3E3E42" />
+                        <Setter Property="BorderThickness" Value="0,0,0,1" />
+                        <Setter Property="HorizontalContentAlignment" Value="Left" />
                     </Style>
                 </DataGrid.ColumnHeaderStyle>
-                
+
                 <DataGrid.CellStyle>
                     <Style TargetType="DataGridCell">
-                        <Setter Property="BorderThickness" Value="0"/>
-                        <Setter Property="Padding" Value="10,5"/>
-                        <Setter Property="Background" Value="Transparent"/>
-                        <Setter Property="Foreground" Value="#FFE0E0E0"/>
+                        <Setter Property="BorderThickness" Value="0" />
+                        <Setter Property="Padding" Value="10,5" />
+                        <Setter Property="Background" Value="Transparent" />
+                        <Setter Property="Foreground" Value="#FFE0E0E0" />
                         <Style.Triggers>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter Property="Background" Value="#FF007ACC"/>
-                                <Setter Property="Foreground" Value="White"/>
+                                <Setter Property="Background" Value="#FF007ACC" />
+                                <Setter Property="Foreground" Value="White" />
                             </Trigger>
                         </Style.Triggers>
                     </Style>
                 </DataGrid.CellStyle>
-                
+
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="File Path"
-                                       Binding="{Binding RelativePath}"
-                                       Width="2*">
+                                        Binding="{Binding RelativePath}"
+                                        Width="2*">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock">
-                                <Setter Property="TextWrapping" Value="NoWrap"/>
-                                <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
-                                <Setter Property="ToolTip" Value="{Binding RelativePath}"/>
+                                <Setter Property="TextWrapping" Value="NoWrap" />
+                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                <Setter Property="ToolTip" Value="{Binding RelativePath}" />
                             </Style>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
-                    
+
                     <DataGridTextColumn Header="Error Reason"
-                                       Binding="{Binding ErrorMessage}"
-                                       Width="2*">
+                                        Binding="{Binding ErrorMessage}"
+                                        Width="2*">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock">
-                                <Setter Property="TextWrapping" Value="Wrap"/>
-                                <Setter Property="Foreground" Value="#FFF44336"/>
-                                <Setter Property="ToolTip" Value="{Binding ErrorMessage}"/>
+                                <Setter Property="TextWrapping" Value="Wrap" />
+                                <Setter Property="Foreground" Value="#FFF44336" />
+                                <Setter Property="ToolTip" Value="{Binding ErrorMessage}" />
                             </Style>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
-                    
+
                     <DataGridTextColumn Header="File Size"
-                                       Binding="{Binding FileSizeFormatted}"
-                                       Width="100"/>
-                    
+                                        Binding="{Binding FileSizeFormatted}"
+                                        Width="100" />
+
                     <DataGridTextColumn Header="Method"
-                                       Binding="{Binding Method}"
-                                       Width="100"/>
-                    
+                                        Binding="{Binding Method}"
+                                        Width="100" />
+
                     <DataGridTextColumn Header="Attempts"
-                                       Binding="{Binding AttemptCount}"
-                                       Width="80"/>
+                                        Binding="{Binding AttemptCount}"
+                                        Width="80" />
                 </DataGrid.Columns>
             </DataGrid>
         </Border>
-        
+
         <!-- Footer Buttons -->
         <StackPanel Grid.Row="3"
                     Orientation="Horizontal"
                     HorizontalAlignment="Right"
                     Margin="0,20,0,0">
-            
+
             <Button Content="📋 Copy to Clipboard"
                     Command="{Binding CopyToClipboardCommand}"
                     Style="{StaticResource ModernButtonStyle}"
-                    Margin="0,0,10,0"/>
-            
+                    Margin="0,0,10,0" />
+
             <Button Content="💾 Export to File"
                     Command="{Binding ExportToFileCommand}"
                     Style="{StaticResource ModernButtonStyle}"
-                    Margin="0,0,10,0"/>
-            
+                    Margin="0,0,10,0" />
+
             <Button Content="Close"
                     Click="CloseButton_Click"
-                    Style="{StaticResource ModernButtonStyle}"/>
+                    Style="{StaticResource ModernButtonStyle}" />
         </StackPanel>
     </Grid>
 </Window>

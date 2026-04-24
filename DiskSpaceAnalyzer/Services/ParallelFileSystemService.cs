@@ -11,59 +11,14 @@ namespace DiskSpaceAnalyzer.Services;
 
 public class ParallelFileSystemService : IFileSystemService
 {
+    private const int MaxFilesPerDirectory = 10_000;
+
     // Bound I/O concurrency to avoid saturating the file-system driver queue.
     // Only the directory-listing phase is gated; recursion proceeds freely so
     // every level of the tree is explored concurrently.
     private static readonly int OptimalParallelism = Math.Max(2, Environment.ProcessorCount / 2);
 
-    private const int MaxFilesPerDirectory = 10_000;
-
     public bool TrackIndividualFiles { get; set; } = true;
-
-    // -------------------------------------------------------------------------
-    // Per-scan context: groups all mutable scan state so the service is
-    // re-entrant and state never leaks between sequential or concurrent calls.
-    // -------------------------------------------------------------------------
-    private sealed class ScanContext : IDisposable
-    {
-        public readonly ConcurrentQueue<string> Errors = new();
-
-        // The semaphore gates directory-listing I/O globally across all
-        // recursive levels.  It is released before any child tasks are launched
-        // so parents never hold a slot while waiting for children (no deadlock).
-        public readonly SemaphoreSlim Semaphore;
-
-        public readonly bool TrackFiles;
-
-        private long _processedItems;
-        private long _totalFiles;
-        private long _totalDirectories;
-        private int _errorCount;
-
-        public ScanContext(int parallelism, bool trackFiles)
-        {
-            Semaphore = new SemaphoreSlim(parallelism, parallelism);
-            TrackFiles = trackFiles;
-        }
-
-        public long IncrementProcessed() => Interlocked.Increment(ref _processedItems);
-        public void AddFiles(long count) => Interlocked.Add(ref _totalFiles, count);
-        public void IncrementDirectories() => Interlocked.Increment(ref _totalDirectories);
-
-        public void AddError(string message)
-        {
-            Errors.Enqueue(message);
-            Interlocked.Increment(ref _errorCount);
-        }
-
-        public long TotalFiles => Interlocked.Read(ref _totalFiles);
-        public long TotalDirectories => Interlocked.Read(ref _totalDirectories);
-
-        // Volatile read is sufficient: used only for approximate progress display.
-        public int ErrorCount => Volatile.Read(ref _errorCount);
-
-        public void Dispose() => Semaphore.Dispose();
-    }
 
     public async Task<ScanResult> ScanDirectoryAsync(string path, ScanMode mode, IProgress<ScanProgress> progress,
         CancellationToken cancellationToken)
@@ -105,12 +60,17 @@ public class ParallelFileSystemService : IFileSystemService
         return result;
     }
 
-    public IEnumerable<string> GetDrives() =>
-        DriveInfo.GetDrives()
+    public IEnumerable<string> GetDrives()
+    {
+        return DriveInfo.GetDrives()
             .Where(d => d.IsReady)
             .Select(d => d.RootDirectory.FullName);
+    }
 
-    public bool DirectoryExists(string path) => Directory.Exists(path);
+    public bool DirectoryExists(string path)
+    {
+        return Directory.Exists(path);
+    }
 
     public DirectoryItem GetDirectoryInfo(string path)
     {
@@ -168,10 +128,8 @@ public class ParallelFileSystemService : IFileSystemService
                 // Single pass: one OS directory-read instead of separate
                 // GetFiles() + GetDirectories() (two reads of the same inode).
                 foreach (var entry in dirInfo.EnumerateFileSystemInfos())
-                {
                     if (entry is FileInfo fi) files.Add(fi);
                     else if (entry is DirectoryInfo di) subdirs.Add(di);
-                }
             }
             catch (UnauthorizedAccessException)
             {
@@ -202,9 +160,7 @@ public class ParallelFileSystemService : IFileSystemService
         long totalSize = 0;
 
         if (ctx.TrackFiles && files.Count > 0 && files.Count <= MaxFilesPerDirectory)
-        {
             foreach (var file in files)
-            {
                 try
                 {
                     var fileSize = file.Length;
@@ -222,16 +178,16 @@ public class ParallelFileSystemService : IFileSystemService
                 {
                     ctx.AddError($"Cannot access file {file.FullName}: {ex.Message}");
                 }
-            }
-        }
         else
-        {
             foreach (var file in files)
-            {
-                try { totalSize += file.Length; }
-                catch (Exception ex) { ctx.AddError($"Cannot access file {file.FullName}: {ex.Message}"); }
-            }
-        }
+                try
+                {
+                    totalSize += file.Length;
+                }
+                catch (Exception ex)
+                {
+                    ctx.AddError($"Cannot access file {file.FullName}: {ex.Message}");
+                }
 
         // ----------------------------------------------------------------
         // Phase 3 – Process subdirectories.
@@ -367,7 +323,6 @@ public class ParallelFileSystemService : IFileSystemService
             {
                 // Single-pass enumeration: one directory read for both files and subdirs.
                 foreach (var entry in currentDir.EnumerateFileSystemInfos())
-                {
                     try
                     {
                         if (entry is FileInfo fi)
@@ -384,7 +339,6 @@ public class ParallelFileSystemService : IFileSystemService
                     {
                         ctx.AddError($"Cannot access entry {entry.FullName}: {ex.Message}");
                     }
-                }
             }
             catch (UnauthorizedAccessException)
             {
@@ -397,5 +351,64 @@ public class ParallelFileSystemService : IFileSystemService
         }
 
         return (totalSize, fileCount);
+    }
+
+    // -------------------------------------------------------------------------
+    // Per-scan context: groups all mutable scan state so the service is
+    // re-entrant and state never leaks between sequential or concurrent calls.
+    // -------------------------------------------------------------------------
+    private sealed class ScanContext : IDisposable
+    {
+        public readonly ConcurrentQueue<string> Errors = new();
+
+        // The semaphore gates directory-listing I/O globally across all
+        // recursive levels.  It is released before any child tasks are launched
+        // so parents never hold a slot while waiting for children (no deadlock).
+        public readonly SemaphoreSlim Semaphore;
+
+        public readonly bool TrackFiles;
+        private int _errorCount;
+
+        private long _processedItems;
+        private long _totalDirectories;
+        private long _totalFiles;
+
+        public ScanContext(int parallelism, bool trackFiles)
+        {
+            Semaphore = new SemaphoreSlim(parallelism, parallelism);
+            TrackFiles = trackFiles;
+        }
+
+        public long TotalFiles => Interlocked.Read(ref _totalFiles);
+        public long TotalDirectories => Interlocked.Read(ref _totalDirectories);
+
+        // Volatile read is sufficient: used only for approximate progress display.
+        public int ErrorCount => Volatile.Read(ref _errorCount);
+
+        public void Dispose()
+        {
+            Semaphore.Dispose();
+        }
+
+        public long IncrementProcessed()
+        {
+            return Interlocked.Increment(ref _processedItems);
+        }
+
+        public void AddFiles(long count)
+        {
+            Interlocked.Add(ref _totalFiles, count);
+        }
+
+        public void IncrementDirectories()
+        {
+            Interlocked.Increment(ref _totalDirectories);
+        }
+
+        public void AddError(string message)
+        {
+            Errors.Enqueue(message);
+            Interlocked.Increment(ref _errorCount);
+        }
     }
 }

@@ -6,20 +6,19 @@ using System.Linq;
 namespace DiskSpaceAnalyzer.Services.Robocopy;
 
 /// <summary>
-/// Parses .gitignore files and converts patterns to Robocopy-compatible exclusions.
+///     Parses .gitignore files and converts patterns to Robocopy-compatible exclusions.
 /// </summary>
 public class GitIgnoreParserService : IGitIgnoreParserService
 {
-    public (List<string> Directories, List<string> Files, List<string> UnsupportedPatterns) ParseGitIgnoreFile(string gitignoreFilePath)
+    public (List<string> Directories, List<string> Files, List<string> UnsupportedPatterns) ParseGitIgnoreFile(
+        string gitignoreFilePath)
     {
         var directories = new List<string>();
         var files = new List<string>();
         var unsupportedPatterns = new List<string>();
 
         if (!File.Exists(gitignoreFilePath))
-        {
             throw new FileNotFoundException($"The .gitignore file was not found: {gitignoreFilePath}");
-        }
 
         var lines = File.ReadAllLines(gitignoreFilePath);
 
@@ -53,18 +52,12 @@ public class GitIgnoreParserService : IGitIgnoreParserService
             {
                 // It's a directory pattern
                 var dirPattern = pattern.TrimEnd('/');
-                if (!string.IsNullOrWhiteSpace(dirPattern))
-                {
-                    directories.Add(dirPattern);
-                }
+                if (!string.IsNullOrWhiteSpace(dirPattern)) directories.Add(dirPattern);
             }
             else
             {
                 // It's a file pattern
-                if (!string.IsNullOrWhiteSpace(pattern))
-                {
-                    files.Add(pattern);
-                }
+                if (!string.IsNullOrWhiteSpace(pattern)) files.Add(pattern);
             }
         }
 
@@ -80,7 +73,7 @@ public class GitIgnoreParserService : IGitIgnoreParserService
         // Patterns without extensions or wildcards are likely directories
         // Common directory patterns: node_modules, .git, bin, obj, etc.
         var cleanPattern = pattern.TrimStart('/').TrimEnd('/');
-        
+
         // If it contains a wildcard for files (like *.log), it's a file pattern
         if (cleanPattern.Contains("*."))
             return false;
@@ -88,26 +81,27 @@ public class GitIgnoreParserService : IGitIgnoreParserService
         // If it has no dot at all, it's a directory (e.g., node_modules, bin)
         if (!cleanPattern.Contains('.'))
             return true;
-        
+
         // Get the last component of the path to check for file extensions
-        var lastComponent = cleanPattern.Contains('/') || cleanPattern.Contains('\\') 
-            ? cleanPattern.Split(new[] { '/', '\\' }).Last() 
+        var lastComponent = cleanPattern.Contains('/') || cleanPattern.Contains('\\')
+            ? cleanPattern.Split(new[] { '/', '\\' }).Last()
             : cleanPattern;
-        
+
         // Dot-directories like .git, .vscode, .angular (no extension after the dot)
         if (lastComponent.StartsWith(".") && lastComponent.IndexOf('.', 1) == -1)
             return true;
-        
+
         // Common file extensions indicate it's a file
-        var knownFileExtensions = new[] { ".log", ".lock", ".md", ".txt", ".json", ".xml", ".exe", ".dll", ".msi", ".db", ".suo", ".user" };
+        var knownFileExtensions = new[]
+            { ".log", ".lock", ".md", ".txt", ".json", ".xml", ".exe", ".dll", ".msi", ".db", ".suo", ".user" };
         if (knownFileExtensions.Any(ext => lastComponent.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
             return false;
-        
+
         // If the last component has an extension (dot not at start), likely a file
         var lastDotIndex = lastComponent.LastIndexOf('.');
         if (lastDotIndex > 0 && lastDotIndex < lastComponent.Length - 1)
             return false; // Has extension like .Store, .db, .gitignore
-        
+
         // Default to directory for ambiguous cases
         return true;
     }
@@ -118,11 +112,8 @@ public class GitIgnoreParserService : IGitIgnoreParserService
         pattern = pattern.TrimStart('/');
 
         // Handle trailing wildcards: .vscode/* -> .vscode (robocopy can't handle path\*)
-        if (pattern.EndsWith("/*"))
-        {
-            pattern = pattern.Substring(0, pattern.Length - 2);
-        }
-        
+        if (pattern.EndsWith("/*")) pattern = pattern.Substring(0, pattern.Length - 2);
+
         // Remove trailing slash for consistency
         pattern = pattern.TrimEnd('/');
 
@@ -135,7 +126,7 @@ public class GitIgnoreParserService : IGitIgnoreParserService
     private bool IsComplexPattern(string pattern)
     {
         // Detect patterns that are too complex for simple robocopy exclusions
-        
+
         // Negation patterns
         if (pattern.StartsWith("!"))
             return true;
@@ -153,7 +144,7 @@ public class GitIgnoreParserService : IGitIgnoreParserService
         // These need special handling that robocopy doesn't support well
         if (pattern.StartsWith("/") && pattern.Count(c => c == '/') > 2)
             return true;
-        
+
         // Robocopy doesn't support wildcards inside paths (e.g., path\* or path\sub*\file)
         // Only supports wildcards in the final component
         var normalized = pattern.TrimStart('/').Replace('/', '\\');

@@ -3,34 +3,34 @@ using System;
 namespace DiskSpaceAnalyzer.Models.FileCopy;
 
 /// <summary>
-/// Represents an error that occurred during a file copy operation.
-/// Generic across all copy engines - specific engines may add additional context.
+///     Represents an error that occurred during a file copy operation.
+///     Generic across all copy engines - specific engines may add additional context.
 /// </summary>
 public class FileCopyError
 {
     /// <summary>System error code (Windows HRESULT, errno, etc.).</summary>
     public int ErrorCode { get; set; }
-    
+
     /// <summary>Hexadecimal error code representation (e.g., "0x00000005").</summary>
     public string HexCode { get; set; } = string.Empty;
-    
+
     /// <summary>File or directory path that caused the error.</summary>
     public string FilePath { get; set; } = string.Empty;
-    
+
     /// <summary>Error message description.</summary>
     public string Message { get; set; } = string.Empty;
-    
+
     /// <summary>Timestamp when error occurred.</summary>
     public DateTime Timestamp { get; set; } = DateTime.Now;
-    
+
     /// <summary>Copy engine that reported this error.</summary>
     public CopyEngineType SourceEngine { get; set; }
-    
+
     /// <summary>Exception object if available (for native engines).</summary>
     public Exception? Exception { get; set; }
-    
+
     /// <summary>
-    /// Get a user-friendly error message based on common error codes.
+    ///     Get a user-friendly error message based on common error codes.
     /// </summary>
     public string FriendlyMessage
     {
@@ -48,17 +48,17 @@ public class FileCopyError
             };
         }
     }
-    
+
     /// <summary>
-    /// Whether this error is likely recoverable with a retry.
+    ///     Whether this error is likely recoverable with a retry.
     /// </summary>
     public bool IsRetryable => ErrorCode is 32 or 33 or 1; // File in use, lock violation, etc.
-    
+
     /// <summary>
-    /// Whether this error indicates a permission issue.
+    ///     Whether this error indicates a permission issue.
     /// </summary>
     public bool IsPermissionError => ErrorCode is 5 or 1314;
-    
+
     public override string ToString()
     {
         var engineInfo = SourceEngine != CopyEngineType.Auto ? $"[{SourceEngine}] " : "";

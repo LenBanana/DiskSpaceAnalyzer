@@ -5,7 +5,7 @@ using System.Windows.Data;
 namespace DiskSpaceAnalyzer.Converters;
 
 /// <summary>
-/// Converts byte values to human-readable file size strings (B, KB, MB, GB, TB).
+///     Converts byte values to human-readable file size strings (B, KB, MB, GB, TB).
 /// </summary>
 public class BytesToSizeConverter : IValueConverter
 {
@@ -13,17 +13,17 @@ public class BytesToSizeConverter : IValueConverter
     {
         if (value is not long bytes)
             return "0 B";
-        
-        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+
+        string[] sizes = ["B", "KB", "MB", "GB", "TB"];
         double len = bytes;
-        int order = 0;
-        
+        var order = 0;
+
         while (len >= 1024 && order < sizes.Length - 1)
         {
             order++;
             len /= 1024;
         }
-        
+
         return $"{len:F2} {sizes[order]}";
     }
 

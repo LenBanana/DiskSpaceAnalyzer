@@ -4,26 +4,87 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using DiskSpaceAnalyzer.Models.Robocopy;
 using DiskSpaceAnalyzer.Models.FileCopy;
+using DiskSpaceAnalyzer.Models.Robocopy;
 using DiskSpaceAnalyzer.Services;
 using DiskSpaceAnalyzer.Services.FileCopy;
 using DiskSpaceAnalyzer.Services.Robocopy;
+using DiskSpaceAnalyzer.Views.Robocopy;
+using Microsoft.VisualBasic;
+using Microsoft.Win32;
 
 namespace DiskSpaceAnalyzer.ViewModels;
 
 /// <summary>
-/// ViewModel for the File Copy window (formerly Robocopy-specific).
-/// Manages UI state, commands, and coordinates with file copy engines via factory pattern.
-/// Supports multiple copy engines: Robocopy and Native C#, with intelligent auto-selection.
+///     ViewModel for the File Copy window (formerly Robocopy-specific).
+///     Manages UI state, commands, and coordinates with file copy engines via factory pattern.
+///     Supports multiple copy engines: Robocopy and Native C#, with intelligent auto-selection.
 /// </summary>
 public partial class FileCopyViewModel : BaseViewModel
 {
+    #region Command Preview
+
+    /// <summary>
+    ///     Gets an engine-aware preview of the operation.
+    ///     Shows command line for Robocopy, structured summary for Native.
+    /// </summary>
+    public string CommandPreview
+    {
+        get
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(SourcePath) || string.IsNullOrWhiteSpace(DestinationPath))
+                    return "Select source and destination to preview operation...";
+
+                var options = BuildFileCopyOptions();
+                var engineToUse = DetermineActualEngine(options);
+
+                return engineToUse == CopyEngineType.Robocopy
+                    ? BuildRobocopyCommandPreview(options)
+                    : BuildNativeOperationPreview(options);
+            }
+            catch
+            {
+                return "Unable to build operation preview";
+            }
+        }
+    }
+
+    #endregion
+
+    #region Options Building
+
+    private FileCopyOptions BuildFileCopyOptions()
+    {
+        return new FileCopyOptions
+        {
+            SourcePath = SourcePath,
+            DestinationPath = DestinationPath,
+            PreferredEngine = SelectedEngine,
+            CopySubdirectories = CopySubdirectories,
+            MirrorMode = MirrorMode,
+            UseParallelCopy = UseMultithreading,
+            ParallelismDegree = ThreadCount,
+            BackupMode = BackupMode,
+            CopySecurity = CopySecurity,
+            RetryCount = 3,
+            RetryWaitSeconds = 5,
+            ExcludeDirectories = ExcludedDirectories.ToList(),
+            ExcludeFiles = ExcludedFiles.ToList(),
+            EnableIntegrityCheck = EnableIntegrityCheck,
+            IntegrityCheckMethod = IntegrityCheckMethod
+        };
+    }
+
+    #endregion
+
     #region Dependencies
 
     private readonly IFileCopyServiceFactory _factory;
@@ -46,16 +107,16 @@ public partial class FileCopyViewModel : BaseViewModel
     [ObservableProperty] private CopyEngineType _selectedEngine = CopyEngineType.Auto;
     [ObservableProperty] private string _engineRecommendationSummary = string.Empty;
     [ObservableProperty] private string _engineRecommendationDetails = string.Empty;
-    [ObservableProperty] private bool _showRecommendationDetails = false;
-    [ObservableProperty] private double _recommendationConfidence = 0.0;
+    [ObservableProperty] private bool _showRecommendationDetails;
+    [ObservableProperty] private double _recommendationConfidence;
     [ObservableProperty] private string _expectedPerformance = string.Empty;
     [ObservableProperty] private string _scenarioSummary = string.Empty;
-    [ObservableProperty] private bool _hasEngineWarnings = false;
+    [ObservableProperty] private bool _hasEngineWarnings;
     [ObservableProperty] private bool _isNativeEngineAvailable = true; // Always available
-    [ObservableProperty] private bool _isRobocopyEngineAvailable = false;
-    
-    public ObservableCollection<CopyEngineType> AvailableEngines { get; } = new();
-    public ObservableCollection<string> EngineWarnings { get; } = new();
+    [ObservableProperty] private bool _isRobocopyEngineAvailable;
+
+    public ObservableCollection<CopyEngineType> AvailableEngines { get; } = [];
+    public ObservableCollection<string> EngineWarnings { get; } = [];
 
     #endregion
 
@@ -63,11 +124,11 @@ public partial class FileCopyViewModel : BaseViewModel
 
     [ObservableProperty] private RobocopyPreset _selectedPreset = RobocopyPreset.Copy;
     [ObservableProperty] private bool _copySubdirectories = true;
-    [ObservableProperty] private bool _mirrorMode = false;
+    [ObservableProperty] private bool _mirrorMode;
     [ObservableProperty] private bool _useMultithreading = true;
     [ObservableProperty] private int _threadCount = 8;
-    [ObservableProperty] private bool _backupMode = false;
-    [ObservableProperty] private bool _copySecurity = false;
+    [ObservableProperty] private bool _backupMode;
+    [ObservableProperty] private bool _copySecurity;
 
     #endregion
 
@@ -76,10 +137,10 @@ public partial class FileCopyViewModel : BaseViewModel
     [ObservableProperty] private ExclusionPreset? _selectedExclusionPreset;
     [ObservableProperty] private string _newExclusionText = string.Empty;
     [ObservableProperty] private bool _isExcludingFolder = true;
-    
-    public ObservableCollection<string> ExcludedDirectories { get; } = new();
-    public ObservableCollection<string> ExcludedFiles { get; } = new();
-    public ObservableCollection<ExclusionPreset> ExclusionPresets { get; } = new();
+
+    public ObservableCollection<string> ExcludedDirectories { get; } = [];
+    public ObservableCollection<string> ExcludedFiles { get; } = [];
+    public ObservableCollection<ExclusionPreset> ExclusionPresets { get; } = [];
 
     #endregion
 
@@ -87,16 +148,16 @@ public partial class FileCopyViewModel : BaseViewModel
 
     [ObservableProperty] private RobocopyJobState _currentState = RobocopyJobState.Ready;
     [ObservableProperty] private string _statusMessage = "Ready to copy";
-    [ObservableProperty] private bool _isRunning = false;
-    [ObservableProperty] private bool _isPaused = false;
+    [ObservableProperty] private bool _isRunning;
+    [ObservableProperty] private bool _isPaused;
     [ObservableProperty] private bool _canStart = true;
-    [ObservableProperty] private double _progressPercentage = 0;
+    [ObservableProperty] private double _progressPercentage;
     [ObservableProperty] private string _currentFile = string.Empty;
-    [ObservableProperty] private long _filesCopied = 0;
-    [ObservableProperty] private long _totalFiles = 0;
-    [ObservableProperty] private long _bytesCopied = 0;
-    [ObservableProperty] private long _totalBytes = 0;
-    [ObservableProperty] private double _transferSpeedMBps = 0;
+    [ObservableProperty] private long _filesCopied;
+    [ObservableProperty] private long _totalFiles;
+    [ObservableProperty] private long _bytesCopied;
+    [ObservableProperty] private long _totalBytes;
+    [ObservableProperty] private double _transferSpeedMBps;
     [ObservableProperty] private string _estimatedTimeRemaining = string.Empty;
     [ObservableProperty] private string _elapsedTime = string.Empty;
 
@@ -106,11 +167,11 @@ public partial class FileCopyViewModel : BaseViewModel
 
     [ObservableProperty] private bool _enableIntegrityCheck = true;
     [ObservableProperty] private IntegrityCheckMethod _integrityCheckMethod = IntegrityCheckMethod.Blake3;
-    [ObservableProperty] private long _filesVerified = 0;
-    [ObservableProperty] private long _filesVerifiedPassed = 0;
-    [ObservableProperty] private long _filesVerifiedFailed = 0;
-    [ObservableProperty] private long _filesRetrying = 0;
-    [ObservableProperty] private double _verificationProgressPercentage = 0;
+    [ObservableProperty] private long _filesVerified;
+    [ObservableProperty] private long _filesVerifiedPassed;
+    [ObservableProperty] private long _filesVerifiedFailed;
+    [ObservableProperty] private long _filesRetrying;
+    [ObservableProperty] private double _verificationProgressPercentage;
     [ObservableProperty] private string _currentVerificationFile = string.Empty;
 
     #endregion
@@ -119,10 +180,10 @@ public partial class FileCopyViewModel : BaseViewModel
 
     [ObservableProperty] private RobocopyResult? _result;
     [ObservableProperty] private string _logFilePath = string.Empty;
-    
-    public ObservableCollection<RobocopyError> Errors { get; } = new();
-    [ObservableProperty] private bool _hasErrors = false;
-    [ObservableProperty] private int _errorCount = 0;
+
+    public ObservableCollection<RobocopyError> Errors { get; } = [];
+    [ObservableProperty] private bool _hasErrors;
+    [ObservableProperty] private int _errorCount;
 
     #endregion
 
@@ -130,43 +191,12 @@ public partial class FileCopyViewModel : BaseViewModel
 
     [ObservableProperty] private bool _isLogVisible = true;
     [ObservableProperty] private string _logOutput = string.Empty;
-    [ObservableProperty] private int _logLineCount = 0;
-    [ObservableProperty] private bool _isLogTruncated = false;
-    
+    [ObservableProperty] private int _logLineCount;
+    [ObservableProperty] private bool _isLogTruncated;
+
     private Window? _logWindow;
     private const int MaxDisplayLines = 1000;
     private readonly Queue<string> _logLines = new();
-
-    #endregion
-
-    #region Command Preview
-
-    /// <summary>
-    /// Gets an engine-aware preview of the operation.
-    /// Shows command line for Robocopy, structured summary for Native.
-    /// </summary>
-    public string CommandPreview
-    {
-        get
-        {
-            try
-            {
-                if (string.IsNullOrWhiteSpace(SourcePath) || string.IsNullOrWhiteSpace(DestinationPath))
-                    return "Select source and destination to preview operation...";
-
-                var options = BuildFileCopyOptions();
-                var engineToUse = DetermineActualEngine(options);
-
-                return engineToUse == CopyEngineType.Robocopy 
-                    ? BuildRobocopyCommandPreview(options)
-                    : BuildNativeOperationPreview(options);
-            }
-            catch
-            {
-                return "Unable to build operation preview";
-            }
-        }
-    }
 
     #endregion
 
@@ -180,8 +210,10 @@ public partial class FileCopyViewModel : BaseViewModel
     {
         _factory = factory ?? throw new ArgumentNullException(nameof(factory));
         _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
-        _exclusionPresetService = exclusionPresetService ?? throw new ArgumentNullException(nameof(exclusionPresetService));
-        _gitIgnoreParserService = gitIgnoreParserService ?? throw new ArgumentNullException(nameof(gitIgnoreParserService));
+        _exclusionPresetService =
+            exclusionPresetService ?? throw new ArgumentNullException(nameof(exclusionPresetService));
+        _gitIgnoreParserService =
+            gitIgnoreParserService ?? throw new ArgumentNullException(nameof(gitIgnoreParserService));
 
         // Load available engines
         LoadAvailableEngines();
@@ -196,25 +228,22 @@ public partial class FileCopyViewModel : BaseViewModel
     private void LoadAvailableEngines()
     {
         AvailableEngines.Clear();
-        
+
         var available = _factory.GetAvailableEngines();
-        
+
         // Track availability for UI bindings
         IsNativeEngineAvailable = available.Contains(CopyEngineType.Native);
         IsRobocopyEngineAvailable = available.Contains(CopyEngineType.Robocopy);
-        
+
         // Always add Auto first
         AvailableEngines.Add(CopyEngineType.Auto);
-        
+
         // Add all engines (both available and unavailable for display)
         AvailableEngines.Add(CopyEngineType.Native);
         AvailableEngines.Add(CopyEngineType.Robocopy);
 
         // Show warning if robocopy unavailable
-        if (!IsRobocopyEngineAvailable)
-        {
-            StatusMessage = "Note: Robocopy unavailable - Native C# engine will be used";
-        }
+        if (!IsRobocopyEngineAvailable) StatusMessage = "Note: Robocopy unavailable - Native C# engine will be used";
     }
 
     #endregion
@@ -239,22 +268,33 @@ public partial class FileCopyViewModel : BaseViewModel
         UpdateEngineRecommendation();
     }
 
-    partial void OnCopySubdirectoriesChanged(bool value) => OnPropertyChanged(nameof(CommandPreview));
+    partial void OnCopySubdirectoriesChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CommandPreview));
+    }
+
     partial void OnMirrorModeChanged(bool value)
     {
         OnPropertyChanged(nameof(CommandPreview));
         UpdateEngineRecommendation();
     }
-    
-    partial void OnUseMultithreadingChanged(bool value) => OnPropertyChanged(nameof(CommandPreview));
-    partial void OnThreadCountChanged(int value) => OnPropertyChanged(nameof(CommandPreview));
-    
+
+    partial void OnUseMultithreadingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CommandPreview));
+    }
+
+    partial void OnThreadCountChanged(int value)
+    {
+        OnPropertyChanged(nameof(CommandPreview));
+    }
+
     partial void OnBackupModeChanged(bool value)
     {
         OnPropertyChanged(nameof(CommandPreview));
         UpdateEngineRecommendation();
     }
-    
+
     partial void OnCopySecurityChanged(bool value)
     {
         OnPropertyChanged(nameof(CommandPreview));
@@ -297,7 +337,7 @@ public partial class FileCopyViewModel : BaseViewModel
     #region Engine Recommendation Logic
 
     /// <summary>
-    /// Updates the engine recommendation based on current options.
+    ///     Updates the engine recommendation based on current options.
     /// </summary>
     private void UpdateEngineRecommendation()
     {
@@ -322,7 +362,7 @@ public partial class FileCopyViewModel : BaseViewModel
             var engineIcon = GetEngineIcon(recommendation.RecommendedEngine);
             var engineName = GetEngineFriendlyName(recommendation.RecommendedEngine);
             var shortReason = GetShortReason(recommendation);
-            
+
             EngineRecommendationSummary = $"{engineIcon} {engineName} - {shortReason}";
 
             // Build detailed explanation
@@ -337,7 +377,7 @@ public partial class FileCopyViewModel : BaseViewModel
             EngineWarnings.Clear();
             foreach (var warning in recommendation.Warnings)
                 EngineWarnings.Add(warning);
-            
+
             HasEngineWarnings = EngineWarnings.Any();
         }
         catch (Exception ex)
@@ -373,7 +413,7 @@ public partial class FileCopyViewModel : BaseViewModel
         // Extract first sentence or key phrase
         var reasoning = recommendation.Reasoning;
         var firstSentence = reasoning.Split('.').FirstOrDefault()?.Trim();
-        
+
         if (string.IsNullOrEmpty(firstSentence))
             return reasoning;
 
@@ -386,8 +426,8 @@ public partial class FileCopyViewModel : BaseViewModel
 
     private string FormatRecommendationDetails(EngineRecommendation recommendation)
     {
-        var details = new System.Text.StringBuilder();
-        
+        var details = new StringBuilder();
+
         details.AppendLine($"Recommended Engine: {GetEngineFriendlyName(recommendation.RecommendedEngine)}");
         details.AppendLine();
         details.AppendLine("Reasoning:");
@@ -402,9 +442,7 @@ public partial class FileCopyViewModel : BaseViewModel
             details.AppendLine();
             details.AppendLine("Alternatives:");
             foreach (var alt in recommendation.Alternatives)
-            {
                 details.AppendLine($"  • {GetEngineFriendlyName(alt.Key)}: {alt.Value}");
-            }
         }
 
         return details.ToString();
@@ -447,35 +485,32 @@ public partial class FileCopyViewModel : BaseViewModel
 
         // Get robocopy service to build command line
         var robocopyService = _factory.CreateService(CopyEngineType.Robocopy);
-        if (robocopyService is IRobocopyService roboService)
-        {
-            return roboService.BuildCommandLine(robocopyOptions);
-        }
+        if (robocopyService is IRobocopyService roboService) return roboService.BuildCommandLine(robocopyOptions);
 
         return "Robocopy command line";
     }
 
     private string BuildNativeOperationPreview(FileCopyOptions options)
     {
-        var preview = new System.Text.StringBuilder();
-        
+        var preview = new StringBuilder();
+
         preview.AppendLine("Operation Preview:");
         preview.AppendLine($"🚀 Native C# Engine {(SelectedEngine == CopyEngineType.Auto ? "(Auto-selected)" : "")}");
         preview.AppendLine($"├─ {SourcePath}");
         preview.AppendLine($"└─ {DestinationPath}");
-        
+
         if (TotalFiles > 0)
             preview.AppendLine($"├─ ~{TotalFiles:N0} files (~{FormatBytes(TotalBytes)})");
-        
+
         if (UseMultithreading)
             preview.AppendLine($"├─ {ThreadCount} parallel threads");
-        
+
         if (EnableIntegrityCheck)
             preview.AppendLine($"├─ Integrity verification: {IntegrityCheckMethod}");
-        
+
         if (MirrorMode)
             preview.AppendLine("├─ Mirror mode (⚠️ will delete extra files)");
-        
+
         if (ExcludedDirectories.Any() || ExcludedFiles.Any())
             preview.AppendLine($"├─ Exclusions: {ExcludedDirectories.Count} folders, {ExcludedFiles.Count} files");
 
@@ -508,26 +543,22 @@ public partial class FileCopyViewModel : BaseViewModel
     private void OpenSourceInExplorer()
     {
         if (Directory.Exists(SourcePath))
-        {
             Process.Start(new ProcessStartInfo
             {
                 FileName = SourcePath,
                 UseShellExecute = true
             });
-        }
     }
 
     [RelayCommand]
     private void OpenDestinationInExplorer()
     {
         if (Directory.Exists(DestinationPath))
-        {
             Process.Start(new ProcessStartInfo
             {
                 FileName = DestinationPath,
                 UseShellExecute = true
             });
-        }
     }
 
     #endregion
@@ -557,7 +588,7 @@ public partial class FileCopyViewModel : BaseViewModel
         var copyService = _factory.CreateService(options);
         if (copyService == null)
         {
-            await _dialogService.ShowErrorAsync("Engine Unavailable", 
+            await _dialogService.ShowErrorAsync("Engine Unavailable",
                 "No suitable copy engine is available for this operation.");
             return;
         }
@@ -566,7 +597,7 @@ public partial class FileCopyViewModel : BaseViewModel
         var validation = await copyService.ValidateOptionsAsync(options);
         if (!validation.IsValid)
         {
-            await _dialogService.ShowErrorAsync("Validation Error", 
+            await _dialogService.ShowErrorAsync("Validation Error",
                 $"Validation failed: {validation.ErrorMessage}");
             return;
         }
@@ -574,8 +605,8 @@ public partial class FileCopyViewModel : BaseViewModel
         // Show warnings if any
         if (validation.Warnings != null && validation.Warnings.Any())
         {
-            var warningMessage = "Please review these warnings:\n\n" + 
-                                string.Join("\n", validation.Warnings);
+            var warningMessage = "Please review these warnings:\n\n" +
+                                 string.Join("\n", validation.Warnings);
             var proceed = await _dialogService.ShowConfirmationAsync("Warnings", warningMessage);
             if (!proceed)
                 return;
@@ -608,17 +639,20 @@ public partial class FileCopyViewModel : BaseViewModel
         }
         catch (NotSupportedException ex)
         {
-            _dialogService.ShowWarning("Pause Not Supported", 
+            _dialogService.ShowWarning("Pause Not Supported",
                 $"The current copy engine does not support pausing: {ex.Message}");
         }
         catch (Exception ex)
         {
-            _dialogService.ShowError("Pause Failed", 
+            _dialogService.ShowError("Pause Failed",
                 $"Failed to pause copy operation: {ex.Message}");
         }
     }
 
-    private bool CanPause() => IsRunning && !IsPaused;
+    private bool CanPause()
+    {
+        return IsRunning && !IsPaused;
+    }
 
     [RelayCommand(CanExecute = nameof(CanResume))]
     private void Resume()
@@ -631,49 +665,26 @@ public partial class FileCopyViewModel : BaseViewModel
         }
         catch (NotSupportedException ex)
         {
-            _dialogService.ShowWarning("Resume Not Supported", 
+            _dialogService.ShowWarning("Resume Not Supported",
                 $"The current copy engine does not support resuming: {ex.Message}");
         }
         catch (Exception ex)
         {
-            _dialogService.ShowError("Resume Failed", 
+            _dialogService.ShowError("Resume Failed",
                 $"Failed to resume copy operation: {ex.Message}");
         }
     }
 
-    private bool CanResume() => IsRunning && IsPaused;
+    private bool CanResume()
+    {
+        return IsRunning && IsPaused;
+    }
 
     [RelayCommand(CanExecute = nameof(IsRunning))]
     private void Cancel()
     {
         _cancellationTokenSource?.Cancel();
         StatusMessage = "Cancelling...";
-    }
-
-    #endregion
-
-    #region Options Building
-
-    private FileCopyOptions BuildFileCopyOptions()
-    {
-        return new FileCopyOptions
-        {
-            SourcePath = SourcePath,
-            DestinationPath = DestinationPath,
-            PreferredEngine = SelectedEngine,
-            CopySubdirectories = CopySubdirectories,
-            MirrorMode = MirrorMode,
-            UseParallelCopy = UseMultithreading,
-            ParallelismDegree = ThreadCount,
-            BackupMode = BackupMode,
-            CopySecurity = CopySecurity,
-            RetryCount = 3,
-            RetryWaitSeconds = 5,
-            ExcludeDirectories = ExcludedDirectories.ToList(),
-            ExcludeFiles = ExcludedFiles.ToList(),
-            EnableIntegrityCheck = EnableIntegrityCheck,
-            IntegrityCheckMethod = IntegrityCheckMethod
-        };
     }
 
     #endregion
@@ -781,12 +792,10 @@ public partial class FileCopyViewModel : BaseViewModel
 
         // Update state
         CurrentState = MapFileCopyStateToRobocopyState(progress.State);
-        
+
         // Update log view for Native engine (Robocopy updates via its own mechanism)
         if (IsLogVisible && _activeService != null && _activeService is not IRobocopyService)
-        {
             LogOutput = BuildNativeLogOutput();
-        }
     }
 
     private RobocopyJobState MapFileCopyStateToRobocopyState(FileCopyJobState state)
@@ -795,7 +804,8 @@ public partial class FileCopyViewModel : BaseViewModel
         {
             FileCopyJobState.Scanning => RobocopyJobState.Scanning,
             FileCopyJobState.Running => RobocopyJobState.Running,
-            FileCopyJobState.Verifying => RobocopyJobState.Running, // Map to Running since RobocopyJobState doesn't have Verifying
+            FileCopyJobState.Verifying => RobocopyJobState
+                .Running, // Map to Running since RobocopyJobState doesn't have Verifying
             FileCopyJobState.Completed => RobocopyJobState.Completed,
             FileCopyJobState.Failed => RobocopyJobState.Failed,
             FileCopyJobState.Cancelled => RobocopyJobState.Cancelled,
@@ -808,31 +818,27 @@ public partial class FileCopyViewModel : BaseViewModel
     {
         CurrentState = MapFileCopyStateToRobocopyState(result.State);
         StatusMessage = result.Success ? "Completed successfully" : "Completed with errors";
-        
+
         // For compatibility with RobocopyResult expectations
         Result = null; // Would need result conversion
-        
+
         ErrorCount = result.ErrorCount;
         HasErrors = result.ErrorCount > 0;
     }
 
     private string BuildCompletionMessage(FileCopyResult result)
     {
-        var msg = new System.Text.StringBuilder();
+        var msg = new StringBuilder();
         msg.AppendLine($"Engine: {GetEngineFriendlyName(result.EngineType)}");
         msg.AppendLine($"Files copied: {result.FilesCopied:N0} / {result.TotalFiles:N0}");
         msg.AppendLine($"Data copied: {FormatBytes(result.BytesCopied)} / {FormatBytes(result.TotalBytes)}");
         msg.AppendLine($"Elapsed time: {FormatTimeSpan(result.Elapsed)}");
-        
+
         if (result.IntegrityCheckEnabled)
-        {
-            msg.AppendLine($"\nVerified: {result.FilesVerifiedPassed:N0} passed, {result.FilesVerifiedFailed:N0} failed");
-        }
-        
-        if (result.ErrorCount > 0)
-        {
-            msg.AppendLine($"\n⚠️ Errors: {result.ErrorCount}");
-        }
+            msg.AppendLine(
+                $"\nVerified: {result.FilesVerifiedPassed:N0} passed, {result.FilesVerifiedFailed:N0} failed");
+
+        if (result.ErrorCount > 0) msg.AppendLine($"\n⚠️ Errors: {result.ErrorCount}");
 
         return msg.ToString();
     }
@@ -849,35 +855,31 @@ public partial class FileCopyViewModel : BaseViewModel
         if (IsLogVisible)
         {
             if (_activeService is IRobocopyService roboService)
-            {
                 // Robocopy: Get actual command output
-                LogOutput = roboService.GetCurrentOutput(250);
-            }
+                LogOutput = roboService.GetCurrentOutput();
             else
-            {
                 // Native engine: Build synthetic progress log
                 LogOutput = BuildNativeLogOutput();
-            }
         }
     }
 
     private string BuildNativeLogOutput()
     {
-        var log = new System.Text.StringBuilder();
+        var log = new StringBuilder();
         log.AppendLine("═══════════════════════════════════════════════════════════");
         log.AppendLine("  Native C# Copy Engine - Progress Summary");
         log.AppendLine("═══════════════════════════════════════════════════════════");
         log.AppendLine();
-        
+
         log.AppendLine($"Status: {StatusMessage}");
         log.AppendLine($"Current State: {CurrentState}");
         log.AppendLine();
-        
+
         log.AppendLine("File Progress:");
         log.AppendLine($"  Copied: {FilesCopied:N0} / {TotalFiles:N0} ({ProgressPercentage:F1}%)");
         log.AppendLine($"  Current: {(string.IsNullOrEmpty(CurrentFile) ? "N/A" : Path.GetFileName(CurrentFile))}");
         log.AppendLine();
-        
+
         log.AppendLine("Data Transfer:");
         log.AppendLine($"  Transferred: {FormatBytes(BytesCopied)} / {FormatBytes(TotalBytes)}");
         log.AppendLine($"  Speed: {TransferSpeedMBps:F2} MB/s");
@@ -885,7 +887,7 @@ public partial class FileCopyViewModel : BaseViewModel
         if (!string.IsNullOrEmpty(EstimatedTimeRemaining))
             log.AppendLine($"  Remaining: {EstimatedTimeRemaining}");
         log.AppendLine();
-        
+
         if (EnableIntegrityCheck && FilesVerified > 0)
         {
             log.AppendLine("Integrity Verification:");
@@ -897,15 +899,15 @@ public partial class FileCopyViewModel : BaseViewModel
                 log.AppendLine($"  Retrying: {FilesRetrying:N0}");
             log.AppendLine();
         }
-        
+
         if (HasErrors && ErrorCount > 0)
         {
             log.AppendLine($"⚠️ Errors: {ErrorCount}");
             log.AppendLine();
         }
-        
+
         log.AppendLine("═══════════════════════════════════════════════════════════");
-        
+
         return log.ToString();
     }
 
@@ -914,7 +916,7 @@ public partial class FileCopyViewModel : BaseViewModel
     {
         if (_logWindow == null)
         {
-            _logWindow = new Views.Robocopy.RobocopyLogWindow(this, _dialogService);
+            _logWindow = new RobocopyLogWindow(this, _dialogService);
             _logWindow.Closed += (s, e) => _logWindow = null;
         }
 
@@ -1015,10 +1017,7 @@ public partial class FileCopyViewModel : BaseViewModel
             IsBuiltIn = true
         });
 
-        foreach (var preset in _exclusionPresetService.GetAllPresets())
-        {
-            ExclusionPresets.Add(preset);
-        }
+        foreach (var preset in _exclusionPresetService.GetAllPresets()) ExclusionPresets.Add(preset);
 
         SelectedExclusionPreset = ExclusionPresets.FirstOrDefault(p => p.Id == "none");
     }
@@ -1072,7 +1071,7 @@ public partial class FileCopyViewModel : BaseViewModel
     [RelayCommand]
     private void SaveExclusionPreset()
     {
-        var name = Microsoft.VisualBasic.Interaction.InputBox(
+        var name = Interaction.InputBox(
             "Enter a name for this exclusion preset:",
             "Save Preset",
             "My Preset");
@@ -1093,7 +1092,8 @@ public partial class FileCopyViewModel : BaseViewModel
         var preset = new ExclusionPreset
         {
             Name = name,
-            Description = $"User-created preset with {ExcludedDirectories.Count} folders and {ExcludedFiles.Count} files excluded",
+            Description =
+                $"User-created preset with {ExcludedDirectories.Count} folders and {ExcludedFiles.Count} files excluded",
             ExcludedDirectories = ExcludedDirectories.ToList(),
             ExcludedFiles = ExcludedFiles.ToList(),
             IsBuiltIn = false
@@ -1144,7 +1144,7 @@ public partial class FileCopyViewModel : BaseViewModel
     [RelayCommand]
     private void ImportGitignore()
     {
-        var dialog = new Microsoft.Win32.OpenFileDialog
+        var dialog = new OpenFileDialog
         {
             Title = "Select .gitignore file",
             Filter = "Gitignore files (.gitignore)|.gitignore|All files (*.*)|*.*",
@@ -1158,26 +1158,22 @@ public partial class FileCopyViewModel : BaseViewModel
         {
             var (directories, files, unsupportedPatterns) = _gitIgnoreParserService.ParseGitIgnoreFile(dialog.FileName);
 
-            int addedDirs = 0;
-            int addedFiles = 0;
+            var addedDirs = 0;
+            var addedFiles = 0;
 
             foreach (var dir in directories)
-            {
                 if (!ExcludedDirectories.Contains(dir))
                 {
                     ExcludedDirectories.Add(dir);
                     addedDirs++;
                 }
-            }
 
             foreach (var file in files)
-            {
                 if (!ExcludedFiles.Contains(file))
                 {
                     ExcludedFiles.Add(file);
                     addedFiles++;
                 }
-            }
 
             if (addedDirs > 0 || addedFiles > 0)
             {
@@ -1185,18 +1181,17 @@ public partial class FileCopyViewModel : BaseViewModel
                 OnPropertyChanged(nameof(CommandPreview));
             }
 
-            var message = $"Successfully imported {addedDirs} folder(s) and {addedFiles} file pattern(s) from .gitignore.";
+            var message =
+                $"Successfully imported {addedDirs} folder(s) and {addedFiles} file pattern(s) from .gitignore.";
 
             if (directories.Count + files.Count > addedDirs + addedFiles)
             {
-                var skipped = (directories.Count - addedDirs) + (files.Count - addedFiles);
+                var skipped = directories.Count - addedDirs + (files.Count - addedFiles);
                 message += $"\n\n{skipped} pattern(s) were skipped (already in exclusion list).";
             }
 
             if (unsupportedPatterns.Count > 0)
-            {
                 message += $"\n\nWarning: {unsupportedPatterns.Count} complex pattern(s) were skipped.";
-            }
 
             if (addedDirs > 0 || addedFiles > 0)
                 _dialogService.ShowSuccess("Import Complete", message);
@@ -1212,9 +1207,7 @@ public partial class FileCopyViewModel : BaseViewModel
     private void SwitchToCustomPreset()
     {
         if (SelectedExclusionPreset?.Id != "custom")
-        {
             SelectedExclusionPreset = ExclusionPresets.FirstOrDefault(p => p.Id == "custom");
-        }
     }
 
     #endregion
@@ -1233,14 +1226,15 @@ public partial class FileCopyViewModel : BaseViewModel
 
     public string FormatBytes(long bytes)
     {
-        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+        string[] sizes = ["B", "KB", "MB", "GB", "TB"];
         double len = bytes;
-        int order = 0;
+        var order = 0;
         while (len >= 1024 && order < sizes.Length - 1)
         {
             order++;
             len /= 1024;
         }
+
         return $"{len:F2} {sizes[order]}";
     }
 

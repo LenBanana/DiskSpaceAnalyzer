@@ -6,7 +6,7 @@ namespace DiskSpaceAnalyzer.Services;
 public interface IDialogService
 {
     string? SelectFolder(string title = "Select Folder");
-    
+
     // Synchronous methods (for backward compatibility)
     void ShowError(string title, string message);
     void ShowInfo(string title, string message);
@@ -15,7 +15,7 @@ public interface IDialogService
     bool ShowConfirmation(string title, string message);
     bool ShowQuestion(string title, string message);
     string? ShowInput(string title, string message, string defaultValue = "");
-    
+
     // Async methods (preferred)
     Task ShowErrorAsync(string title, string message, Window? owner = null);
     Task ShowInfoAsync(string title, string message, Window? owner = null);

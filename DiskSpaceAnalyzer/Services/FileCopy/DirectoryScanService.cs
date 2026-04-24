@@ -2,27 +2,25 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace DiskSpaceAnalyzer.Services.FileCopy;
 
 /// <summary>
-/// High-performance directory scanning service using lazy enumeration.
-/// Shared by all copy engines for consistent, fast, non-blocking scanning.
-/// 
-/// Key Features:
-/// - Lazy enumeration (doesn't load all files into memory)
-/// - Progress reporting every N files
-/// - Respects exclusion filters
-/// - Handles access denied gracefully
-/// - Supports cancellation
+///     High-performance directory scanning service using lazy enumeration.
+///     Shared by all copy engines for consistent, fast, non-blocking scanning.
+///     Key Features:
+///     - Lazy enumeration (doesn't load all files into memory)
+///     - Progress reporting every N files
+///     - Respects exclusion filters
+///     - Handles access denied gracefully
+///     - Supports cancellation
 /// </summary>
 public class DirectoryScanService : IDirectoryScanService
 {
     private const int ProgressReportInterval = 100; // Report every 100 files
-    
+
     public async Task<DirectoryScanResult> ScanAsync(
         DirectoryScanOptions options,
         IProgress<DirectoryScanProgress>? progress,
@@ -30,13 +28,13 @@ public class DirectoryScanService : IDirectoryScanService
     {
         if (options == null)
             throw new ArgumentNullException(nameof(options));
-        
+
         if (string.IsNullOrWhiteSpace(options.SourcePath))
             throw new ArgumentException("SourcePath is required", nameof(options));
-        
+
         if (!Directory.Exists(options.SourcePath))
             throw new DirectoryNotFoundException($"Source directory not found: {options.SourcePath}");
-        
+
         var stopwatch = Stopwatch.StartNew();
         var result = new DirectoryScanResult();
         var files = new List<ScannedFileInfo>();
@@ -44,7 +42,7 @@ public class DirectoryScanService : IDirectoryScanService
         long totalFiles = 0;
         long totalDirectories = 0;
         long totalBytes = 0;
-        
+
         // Run scan on thread pool to avoid blocking
         await Task.Run(() =>
         {
@@ -62,9 +60,9 @@ public class DirectoryScanService : IDirectoryScanService
                 progress,
                 cancellationToken);
         }, cancellationToken);
-        
+
         stopwatch.Stop();
-        
+
         return new DirectoryScanResult
         {
             TotalFiles = totalFiles,
@@ -75,7 +73,7 @@ public class DirectoryScanService : IDirectoryScanService
             Duration = stopwatch.Elapsed
         };
     }
-    
+
     public async Task<long> EstimateSizeAsync(
         string path,
         List<string>? excludeDirectories,
@@ -84,12 +82,12 @@ public class DirectoryScanService : IDirectoryScanService
     {
         if (string.IsNullOrWhiteSpace(path))
             return 0;
-        
+
         if (!Directory.Exists(path))
             return 0;
-        
+
         long totalSize = 0;
-        
+
         await Task.Run(() =>
         {
             EstimateSizeRecursive(
@@ -100,15 +98,15 @@ public class DirectoryScanService : IDirectoryScanService
                 ref totalSize,
                 cancellationToken);
         }, cancellationToken);
-        
+
         return totalSize;
     }
-    
+
     #region Private Scanning Methods
-    
+
     /// <summary>
-    /// Recursively scan a directory using lazy enumeration.
-    /// This method is designed to be fast and non-blocking.
+    ///     Recursively scan a directory using lazy enumeration.
+    ///     This method is designed to be fast and non-blocking.
     /// </summary>
     private void ScanDirectory(
         string sourceRoot,
@@ -125,55 +123,54 @@ public class DirectoryScanService : IDirectoryScanService
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        
+
         var currentSourcePath = string.IsNullOrEmpty(relativePath)
             ? sourcePath
             : Path.Combine(sourcePath, relativePath);
-        
+
         try
         {
             var dirInfo = new DirectoryInfo(currentSourcePath);
-            
+
             // Scan files in current directory
             foreach (var file in dirInfo.EnumerateFiles())
-            {
                 try
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    
+
                     // Check file exclusions
                     if (ShouldExcludeFile(file.Name, file.FullName, sourceRoot, options.ExcludeFiles))
                         continue;
-                    
+
                     // Apply size filters
                     if (options.MinFileSize.HasValue && file.Length < options.MinFileSize.Value)
                         continue;
-                    
+
                     if (options.MaxFileSize.HasValue && file.Length > options.MaxFileSize.Value)
                         continue;
-                    
+
                     // Apply date filters
                     if (options.OlderThan.HasValue && file.CreationTimeUtc > options.OlderThan.Value)
                         continue;
-                    
+
                     if (options.NewerThan.HasValue && file.CreationTimeUtc < options.NewerThan.Value)
                         continue;
-                    
+
                     // File passed all filters - count it
                     totalFiles++;
                     totalBytes += file.Length;
-                    
+
                     // Add to file list if requested
                     if (options.BuildFileList)
                     {
                         var fileRelativePath = string.IsNullOrEmpty(relativePath)
                             ? file.Name
                             : Path.Combine(relativePath, file.Name);
-                        
+
                         var destPath = string.IsNullOrEmpty(destRoot)
                             ? string.Empty
                             : Path.Combine(destRoot, fileRelativePath);
-                        
+
                         files.Add(new ScannedFileInfo
                         {
                             SourcePath = file.FullName,
@@ -184,10 +181,9 @@ public class DirectoryScanService : IDirectoryScanService
                             Attributes = file.Attributes
                         });
                     }
-                    
+
                     // Report progress periodically
                     if (totalFiles % ProgressReportInterval == 0)
-                    {
                         progress?.Report(new DirectoryScanProgress
                         {
                             FilesFound = totalFiles,
@@ -196,7 +192,6 @@ public class DirectoryScanService : IDirectoryScanService
                             CurrentDirectory = currentSourcePath,
                             PercentComplete = 0 // Unknown total
                         });
-                    }
                 }
                 catch (UnauthorizedAccessException)
                 {
@@ -216,28 +211,26 @@ public class DirectoryScanService : IDirectoryScanService
                         Timestamp = DateTime.Now
                     });
                 }
-            }
-            
+
             // Scan subdirectories if requested
             if (options.IncludeSubdirectories)
-            {
                 foreach (var subDir in dirInfo.EnumerateDirectories())
-                {
                     try
                     {
                         cancellationToken.ThrowIfCancellationRequested();
-                        
+
                         // Check directory exclusions
-                        if (ShouldExcludeDirectory(subDir.Name, subDir.FullName, sourceRoot, options.ExcludeDirectories))
+                        if (ShouldExcludeDirectory(subDir.Name, subDir.FullName, sourceRoot,
+                                options.ExcludeDirectories))
                             continue;
-                        
+
                         totalDirectories++;
-                        
+
                         // Recurse into subdirectory
                         var newRelativePath = string.IsNullOrEmpty(relativePath)
                             ? subDir.Name
                             : Path.Combine(relativePath, subDir.Name);
-                        
+
                         ScanDirectory(
                             sourceRoot,
                             destRoot,
@@ -270,8 +263,6 @@ public class DirectoryScanService : IDirectoryScanService
                             Timestamp = DateTime.Now
                         });
                     }
-                }
-            }
         }
         catch (UnauthorizedAccessException)
         {
@@ -292,9 +283,9 @@ public class DirectoryScanService : IDirectoryScanService
             });
         }
     }
-    
+
     /// <summary>
-    /// Quick recursive size estimation without building file list.
+    ///     Quick recursive size estimation without building file list.
     /// </summary>
     private void EstimateSizeRecursive(
         string sourceRoot,
@@ -305,34 +296,28 @@ public class DirectoryScanService : IDirectoryScanService
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        
+
         try
         {
             var dirInfo = new DirectoryInfo(currentPath);
-            
+
             // Add file sizes
             foreach (var file in dirInfo.EnumerateFiles())
-            {
                 try
                 {
                     if (!ShouldExcludeFile(file.Name, file.FullName, sourceRoot, excludeFiles))
-                    {
                         totalSize += file.Length;
-                    }
                 }
                 catch
                 {
                     // Ignore individual file errors
                 }
-            }
-            
+
             // Recurse into subdirectories
             foreach (var subDir in dirInfo.EnumerateDirectories())
-            {
                 try
                 {
                     if (!ShouldExcludeDirectory(subDir.Name, subDir.FullName, sourceRoot, excludeDirectories))
-                    {
                         EstimateSizeRecursive(
                             sourceRoot,
                             subDir.FullName,
@@ -340,27 +325,25 @@ public class DirectoryScanService : IDirectoryScanService
                             excludeFiles,
                             ref totalSize,
                             cancellationToken);
-                    }
                 }
                 catch
                 {
                     // Ignore subdirectory errors
                 }
-            }
         }
         catch
         {
             // Ignore directory errors
         }
     }
-    
+
     #endregion
-    
+
     #region Filtering Logic
-    
+
     /// <summary>
-    /// Check if a directory should be excluded based on patterns.
-    /// Supports name matching, wildcards, and path-based exclusions.
+    ///     Check if a directory should be excluded based on patterns.
+    ///     Supports name matching, wildcards, and path-based exclusions.
     /// </summary>
     private bool ShouldExcludeDirectory(
         string directoryName,
@@ -370,9 +353,8 @@ public class DirectoryScanService : IDirectoryScanService
     {
         if (exclusions == null || exclusions.Count == 0)
             return false;
-        
+
         foreach (var pattern in exclusions)
-        {
             // Case 1: Simple name match (e.g., "node_modules")
             if (!pattern.Contains("\\") && !pattern.Contains("*") && !pattern.Contains("?"))
             {
@@ -389,24 +371,21 @@ public class DirectoryScanService : IDirectoryScanService
             else if (pattern.Contains("\\"))
             {
                 var relativePath = GetRelativePath(sourceRoot, fullPath);
-                
+
                 if (relativePath.Equals(pattern, StringComparison.OrdinalIgnoreCase))
                     return true;
-                
+
                 if (pattern.Contains("*") || pattern.Contains("?"))
-                {
                     if (MatchesWildcard(relativePath, pattern))
                         return true;
-                }
             }
-        }
-        
+
         return false;
     }
-    
+
     /// <summary>
-    /// Check if a file should be excluded based on patterns.
-    /// Supports name matching, wildcards, and path-based exclusions.
+    ///     Check if a file should be excluded based on patterns.
+    ///     Supports name matching, wildcards, and path-based exclusions.
     /// </summary>
     private bool ShouldExcludeFile(
         string fileName,
@@ -416,9 +395,8 @@ public class DirectoryScanService : IDirectoryScanService
     {
         if (exclusions == null || exclusions.Count == 0)
             return false;
-        
+
         foreach (var pattern in exclusions)
-        {
             // Case 1: Simple name or wildcard (e.g., "*.log", "Thumbs.db")
             if (!pattern.Contains("\\"))
             {
@@ -429,39 +407,35 @@ public class DirectoryScanService : IDirectoryScanService
             else
             {
                 var relativePath = GetRelativePath(sourceRoot, fullPath);
-                
+
                 if (relativePath.Equals(pattern, StringComparison.OrdinalIgnoreCase))
                     return true;
-                
+
                 if (pattern.Contains("*") || pattern.Contains("?"))
-                {
                     if (MatchesWildcard(relativePath, pattern))
                         return true;
-                }
             }
-        }
-        
+
         return false;
     }
-    
+
     /// <summary>
-    /// Simple wildcard matching supporting * (any characters) and ? (single character).
+    ///     Simple wildcard matching supporting * (any characters) and ? (single character).
     /// </summary>
     private bool MatchesWildcard(string text, string pattern)
     {
         if (string.IsNullOrEmpty(pattern))
             return string.IsNullOrEmpty(text);
-        
+
         // Convert wildcard pattern to regex-like matching
-        int textIndex = 0;
-        int patternIndex = 0;
-        int lastWildcardIndex = -1;
-        int lastTextIndex = -1;
-        
+        var textIndex = 0;
+        var patternIndex = 0;
+        var lastWildcardIndex = -1;
+        var lastTextIndex = -1;
+
         while (textIndex < text.Length)
-        {
-            if (patternIndex < pattern.Length && 
-                (pattern[patternIndex] == '?' || 
+            if (patternIndex < pattern.Length &&
+                (pattern[patternIndex] == '?' ||
                  char.ToLowerInvariant(pattern[patternIndex]) == char.ToLowerInvariant(text[textIndex])))
             {
                 // Match single character
@@ -486,43 +460,39 @@ public class DirectoryScanService : IDirectoryScanService
             {
                 return false;
             }
-        }
-        
+
         // Check remaining pattern characters (should be only *)
-        while (patternIndex < pattern.Length && pattern[patternIndex] == '*')
-        {
-            patternIndex++;
-        }
-        
+        while (patternIndex < pattern.Length && pattern[patternIndex] == '*') patternIndex++;
+
         return patternIndex == pattern.Length;
     }
-    
+
     /// <summary>
-    /// Get relative path from base to target.
+    ///     Get relative path from base to target.
     /// </summary>
     private string GetRelativePath(string basePath, string targetPath)
     {
         if (string.IsNullOrEmpty(basePath) || string.IsNullOrEmpty(targetPath))
             return targetPath;
-        
+
         var baseUri = new Uri(AppendDirectorySeparator(basePath));
         var targetUri = new Uri(targetPath);
-        
+
         if (baseUri.Scheme != targetUri.Scheme)
             return targetPath;
-        
+
         var relativeUri = baseUri.MakeRelativeUri(targetUri);
         var relativePath = Uri.UnescapeDataString(relativeUri.ToString());
-        
+
         return relativePath.Replace('/', Path.DirectorySeparatorChar);
     }
-    
+
     private string AppendDirectorySeparator(string path)
     {
         if (!path.EndsWith(Path.DirectorySeparatorChar.ToString()))
             return path + Path.DirectorySeparatorChar;
         return path;
     }
-    
+
     #endregion
 }

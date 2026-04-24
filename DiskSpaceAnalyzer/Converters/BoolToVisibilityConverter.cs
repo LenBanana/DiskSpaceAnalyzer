@@ -25,10 +25,8 @@ public class MultiBoolToVisibilityConverter : IMultiValueConverter
     public object Convert(object[] values, Type targetType, object? parameter, CultureInfo culture)
     {
         foreach (var value in values)
-        {
             if (value is not bool boolValue || !boolValue)
                 return Visibility.Collapsed;
-        }
         return Visibility.Visible;
     }
 

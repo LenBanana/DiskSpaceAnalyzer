@@ -4,15 +4,15 @@ using System.IO;
 namespace DiskSpaceAnalyzer.Services.FileCopy;
 
 /// <summary>
-/// Utility class for analyzing file copy scenarios and path characteristics.
-/// Provides path analysis, drive type detection, and performance estimation
-/// to support intelligent engine selection.
+///     Utility class for analyzing file copy scenarios and path characteristics.
+///     Provides path analysis, drive type detection, and performance estimation
+///     to support intelligent engine selection.
 /// </summary>
 public static class CopyScenarioAnalyzer
 {
     /// <summary>
-    /// Determines if a path points to a network location.
-    /// Detects UNC paths (\\server\share) and mapped network drives.
+    ///     Determines if a path points to a network location.
+    ///     Detects UNC paths (\\server\share) and mapped network drives.
     /// </summary>
     /// <param name="path">The path to analyze.</param>
     /// <returns>True if the path is a network location, false otherwise.</returns>
@@ -44,12 +44,12 @@ public static class CopyScenarioAnalyzer
     }
 
     /// <summary>
-    /// Gets the drive type for a given path.
-    /// Useful for performance estimation and engine selection.
+    ///     Gets the drive type for a given path.
+    ///     Useful for performance estimation and engine selection.
     /// </summary>
     /// <param name="path">The path to analyze.</param>
     /// <returns>
-    /// The DriveType enum value, or null if the drive type cannot be determined.
+    ///     The DriveType enum value, or null if the drive type cannot be determined.
     /// </returns>
     public static DriveType? GetDriveType(string path)
     {
@@ -76,8 +76,8 @@ public static class CopyScenarioAnalyzer
     }
 
     /// <summary>
-    /// Checks if two paths are on the same physical drive.
-    /// Useful for detecting same-drive copies (which can be faster).
+    ///     Checks if two paths are on the same physical drive.
+    ///     Useful for detecting same-drive copies (which can be faster).
     /// </summary>
     /// <param name="path1">First path to compare.</param>
     /// <param name="path2">Second path to compare.</param>
@@ -105,8 +105,8 @@ public static class CopyScenarioAnalyzer
     }
 
     /// <summary>
-    /// Estimates the optimal degree of parallelism based on drive types.
-    /// SSDs benefit from higher parallelism, HDDs and network drives from moderate.
+    ///     Estimates the optimal degree of parallelism based on drive types.
+    ///     SSDs benefit from higher parallelism, HDDs and network drives from moderate.
     /// </summary>
     /// <param name="sourceDriveType">Source drive type.</param>
     /// <param name="destDriveType">Destination drive type.</param>
@@ -135,7 +135,7 @@ public static class CopyScenarioAnalyzer
     }
 
     /// <summary>
-    /// Checks if copying a directory into itself (which would be problematic).
+    ///     Checks if copying a directory into itself (which would be problematic).
     /// </summary>
     /// <param name="sourcePath">Source directory path.</param>
     /// <param name="destinationPath">Destination directory path.</param>
@@ -164,14 +164,14 @@ public static class CopyScenarioAnalyzer
     }
 
     /// <summary>
-    /// Analyzes path accessibility and returns potential issues.
+    ///     Analyzes path accessibility and returns potential issues.
     /// </summary>
     /// <param name="path">The path to check.</param>
     /// <returns>
-    /// Tuple containing:
-    /// - Exists: Whether the path exists
-    /// - IsAccessible: Whether the path can be accessed
-    /// - ErrorMessage: Description of any issues, or null if none
+    ///     Tuple containing:
+    ///     - Exists: Whether the path exists
+    ///     - IsAccessible: Whether the path can be accessed
+    ///     - ErrorMessage: Description of any issues, or null if none
     /// </returns>
     public static (bool Exists, bool IsAccessible, string? ErrorMessage) AnalyzePathAccessibility(string path)
     {
@@ -202,7 +202,7 @@ public static class CopyScenarioAnalyzer
     }
 
     /// <summary>
-    /// Provides a human-readable description of a drive type.
+    ///     Provides a human-readable description of a drive type.
     /// </summary>
     /// <param name="driveType">The drive type to describe.</param>
     /// <returns>User-friendly description string.</returns>
@@ -222,8 +222,8 @@ public static class CopyScenarioAnalyzer
     }
 
     /// <summary>
-    /// Estimates the performance category for a drive type.
-    /// Used for engine selection and parallelism tuning.
+    ///     Estimates the performance category for a drive type.
+    ///     Used for engine selection and parallelism tuning.
     /// </summary>
     /// <param name="driveType">The drive type to evaluate.</param>
     /// <returns>Performance category: "High", "Medium", "Low", or "Unknown".</returns>
@@ -241,8 +241,8 @@ public static class CopyScenarioAnalyzer
     }
 
     /// <summary>
-    /// Determines if the scenario benefits from native engine's speed advantage.
-    /// Native engine is 2-4x faster for local SSD operations.
+    ///     Determines if the scenario benefits from native engine's speed advantage.
+    ///     Native engine is 2-4x faster for local SSD operations.
     /// </summary>
     /// <param name="sourcePath">Source path.</param>
     /// <param name="destinationPath">Destination path.</param>
@@ -272,8 +272,8 @@ public static class CopyScenarioAnalyzer
     }
 
     /// <summary>
-    /// Checks if robocopy.exe is likely to be more reliable for this scenario.
-    /// Robocopy excels at network copies, complex filtering, and locked files.
+    ///     Checks if robocopy.exe is likely to be more reliable for this scenario.
+    ///     Robocopy excels at network copies, complex filtering, and locked files.
     /// </summary>
     /// <param name="sourcePath">Source path.</param>
     /// <param name="destinationPath">Destination path.</param>

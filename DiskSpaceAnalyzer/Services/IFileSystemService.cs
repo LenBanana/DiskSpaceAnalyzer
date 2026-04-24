@@ -9,7 +9,7 @@ namespace DiskSpaceAnalyzer.Services;
 public interface IFileSystemService
 {
     bool TrackIndividualFiles { get; set; }
-    
+
     Task<ScanResult> ScanDirectoryAsync(string path, ScanMode mode, IProgress<ScanProgress> progress,
         CancellationToken cancellationToken);
 

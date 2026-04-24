@@ -7,15 +7,16 @@ using DiskSpaceAnalyzer.Models.Robocopy;
 namespace DiskSpaceAnalyzer.Services.FileCopy;
 
 /// <summary>
-/// Maps between generic FileCopyResult and Robocopy-specific RobocopyResult.
-/// Handles bidirectional conversion for final operation results.
+///     Maps between generic FileCopyResult and Robocopy-specific RobocopyResult.
+///     Handles bidirectional conversion for final operation results.
 /// </summary>
 public static class FileCopyResultMapper
 {
     /// <summary>
-    /// Convert Robocopy-specific RobocopyResult to generic FileCopyResult.
+    ///     Convert Robocopy-specific RobocopyResult to generic FileCopyResult.
     /// </summary>
-    public static FileCopyResult ToFileCopyResult(RobocopyResult robocopy, CopyEngineType engineType = CopyEngineType.Robocopy)
+    public static FileCopyResult ToFileCopyResult(RobocopyResult robocopy,
+        CopyEngineType engineType = CopyEngineType.Robocopy)
     {
         var result = new FileCopyResult
         {
@@ -25,7 +26,7 @@ public static class FileCopyResultMapper
             EngineType = engineType,
             ExitCode = robocopy.ExitCode,
             ExitCodeMessage = robocopy.ExitCodeMessage,
-            
+
             // Summary statistics
             TotalDirectories = robocopy.TotalDirectories,
             TotalFiles = robocopy.TotalFiles,
@@ -38,7 +39,7 @@ public static class FileCopyResultMapper
             FilesExtra = robocopy.FilesExtra,
             FilesMismatched = robocopy.FilesMismatched,
             FilesDeleted = 0, // Robocopy doesn't track this separately
-            
+
             // Timing
             StartTime = robocopy.StartTime,
             EndTime = robocopy.EndTime,
@@ -46,7 +47,7 @@ public static class FileCopyResultMapper
             ActiveDuration = robocopy.ActiveDuration,
             PausedDuration = TimeSpan.Zero, // Calculate if needed
             AverageBytesPerSecond = robocopy.AverageBytesPerSecond,
-            
+
             // Errors (convert RobocopyError to FileCopyError)
             Errors = robocopy.Errors.Select(e => new FileCopyError
             {
@@ -56,20 +57,20 @@ public static class FileCopyResultMapper
                 Timestamp = e.Timestamp,
                 SourceEngine = CopyEngineType.Robocopy
             }).ToList(),
-            
+
             // Logging
             LogFilePath = robocopy.LogFilePath,
-            
+
             // Integrity verification
             IntegrityCheckEnabled = robocopy.IntegrityCheckEnabled,
             IntegrityCheckCompleted = robocopy.FilesVerified > 0,
             IntegrityChecksPassed = robocopy.FilesVerifiedPassed,
             IntegrityChecksFailed = robocopy.FilesVerifiedFailed,
             IntegrityCheckDuration = TimeSpan.Zero, // Robocopy doesn't track this separately
-            
+
             // Convert IntegrityCheckResult if available
             IntegrityResults = robocopy.FailedVerificationDetails
-                .Select(f => new Models.FileCopy.IntegrityCheckResult
+                .Select(f => new IntegrityCheckResult
                 {
                     RelativePath = f.RelativePath,
                     SourcePath = "", // Not available in verification info
@@ -86,16 +87,16 @@ public static class FileCopyResultMapper
                 })
                 .ToList()
         };
-        
+
         // Generate summary message
         result.SummaryMessage = FileCopyResult.GenerateSummary(result);
-        
+
         return result;
     }
-    
+
     /// <summary>
-    /// Convert generic FileCopyResult to Robocopy-specific RobocopyResult.
-    /// Used for reverse compatibility when legacy code expects RobocopyResult.
+    ///     Convert generic FileCopyResult to Robocopy-specific RobocopyResult.
+    ///     Used for reverse compatibility when legacy code expects RobocopyResult.
     /// </summary>
     public static RobocopyResult ToRobocopyResult(FileCopyResult generic)
     {
@@ -106,7 +107,7 @@ public static class FileCopyResultMapper
             State = MapJobState(generic.State),
             ExitCode = generic.ExitCode,
             ExitCodeMessage = generic.ExitCodeMessage,
-            
+
             // Summary statistics
             TotalDirectories = generic.TotalDirectories,
             TotalFiles = generic.TotalFiles,
@@ -118,14 +119,14 @@ public static class FileCopyResultMapper
             FilesSkipped = generic.FilesSkipped,
             FilesExtra = generic.FilesExtra,
             FilesMismatched = generic.FilesMismatched,
-            
+
             // Timing
             StartTime = generic.StartTime,
             EndTime = generic.EndTime,
             Duration = generic.Duration,
             ActiveDuration = generic.ActiveDuration,
             AverageBytesPerSecond = generic.AverageBytesPerSecond,
-            
+
             // Errors (convert FileCopyError to RobocopyError)
             Errors = generic.Errors.Select(e => new RobocopyError
             {
@@ -134,15 +135,15 @@ public static class FileCopyResultMapper
                 FilePath = e.FilePath,
                 Timestamp = e.Timestamp
             }).ToList(),
-            
+
             // Logging
             LogFilePath = generic.LogFilePath,
-            
+
             // Integrity verification
             IntegrityCheckEnabled = generic.IntegrityCheckEnabled,
             IntegrityCheckMethod = generic.IntegrityCheckEnabled && generic.IntegrityResults?.Count > 0
                 ? generic.IntegrityResults[0].Method
-                : Models.FileCopy.IntegrityCheckMethod.Metadata,
+                : IntegrityCheckMethod.Metadata,
             FilesVerified = generic.IntegrityChecksPassed + generic.IntegrityChecksFailed,
             FilesVerifiedPassed = generic.IntegrityChecksPassed,
             FilesVerifiedFailed = generic.IntegrityChecksFailed,
@@ -166,12 +167,12 @@ public static class FileCopyResultMapper
                 })
                 .ToList() ?? new List<VerificationFailureInfo>()
         };
-        
+
         return result;
     }
-    
+
     /// <summary>
-    /// Map RobocopyJobState to FileCopyJobState.
+    ///     Map RobocopyJobState to FileCopyJobState.
     /// </summary>
     private static FileCopyJobState MapJobState(RobocopyJobState state)
     {
@@ -187,9 +188,9 @@ public static class FileCopyResultMapper
             _ => FileCopyJobState.Ready
         };
     }
-    
+
     /// <summary>
-    /// Map FileCopyJobState to RobocopyJobState.
+    ///     Map FileCopyJobState to RobocopyJobState.
     /// </summary>
     private static RobocopyJobState MapJobState(FileCopyJobState state)
     {

@@ -1,19 +1,19 @@
-using System;
 using DiskSpaceAnalyzer.Models.FileCopy;
 using DiskSpaceAnalyzer.Models.Robocopy;
 
 namespace DiskSpaceAnalyzer.Services.FileCopy;
 
 /// <summary>
-/// Maps between generic FileCopyProgress and Robocopy-specific RobocopyProgress.
-/// Handles bidirectional conversion for real-time progress reporting.
+///     Maps between generic FileCopyProgress and Robocopy-specific RobocopyProgress.
+///     Handles bidirectional conversion for real-time progress reporting.
 /// </summary>
 public static class FileCopyProgressMapper
 {
     /// <summary>
-    /// Convert Robocopy-specific RobocopyProgress to generic FileCopyProgress.
+    ///     Convert Robocopy-specific RobocopyProgress to generic FileCopyProgress.
     /// </summary>
-    public static FileCopyProgress ToFileCopyProgress(RobocopyProgress robocopy, CopyEngineType engineType = CopyEngineType.Robocopy)
+    public static FileCopyProgress ToFileCopyProgress(RobocopyProgress robocopy,
+        CopyEngineType engineType = CopyEngineType.Robocopy)
     {
         return new FileCopyProgress
         {
@@ -21,7 +21,7 @@ public static class FileCopyProgressMapper
             State = MapJobState(robocopy.State),
             StatusMessage = robocopy.StatusMessage,
             EngineType = engineType,
-            
+
             // File progress
             FilesCopied = robocopy.FilesCopied,
             TotalFiles = robocopy.TotalFiles,
@@ -29,24 +29,24 @@ public static class FileCopyProgressMapper
             TotalDirectories = robocopy.TotalDirectories,
             FilesFailed = robocopy.ErrorCount, // Map error count to failed files
             FilesSkipped = robocopy.SkippedFiles,
-            
+
             // Byte progress
             BytesCopied = robocopy.BytesCopied,
             TotalBytes = robocopy.TotalBytes,
             CurrentFile = robocopy.CurrentFile,
             CurrentFileBytesCopied = 0, // Robocopy doesn't track byte-level per-file progress
             CurrentFileSize = 0,
-            
+
             // Timing
             StartTime = robocopy.StartTime,
             Elapsed = robocopy.Elapsed,
             PausedDuration = robocopy.PausedDuration
         };
     }
-    
+
     /// <summary>
-    /// Convert generic FileCopyProgress to Robocopy-specific RobocopyProgress.
-    /// Used for reverse compatibility or when wrapping generic progress.
+    ///     Convert generic FileCopyProgress to Robocopy-specific RobocopyProgress.
+    ///     Used for reverse compatibility or when wrapping generic progress.
     /// </summary>
     public static RobocopyProgress ToRobocopyProgress(FileCopyProgress generic)
     {
@@ -55,7 +55,7 @@ public static class FileCopyProgressMapper
             // State
             State = MapJobState(generic.State),
             StatusMessage = generic.StatusMessage,
-            
+
             // File progress
             FilesCopied = generic.FilesCopied,
             TotalFiles = generic.TotalFiles,
@@ -63,17 +63,17 @@ public static class FileCopyProgressMapper
             TotalDirectories = generic.TotalDirectories,
             ErrorCount = (int)generic.FilesFailed, // Map failed files to error count
             SkippedFiles = generic.FilesSkipped,
-            
+
             // Byte progress
             BytesCopied = generic.BytesCopied,
             TotalBytes = generic.TotalBytes,
             CurrentFile = generic.CurrentFile,
-            
+
             // Timing
             StartTime = generic.StartTime,
             Elapsed = generic.Elapsed,
             PausedDuration = generic.PausedDuration,
-            
+
             // Integrity verification
             FilesVerified = 0,
             FilesVerifiedPassed = 0,
@@ -83,9 +83,9 @@ public static class FileCopyProgressMapper
             CurrentVerificationFile = string.Empty
         };
     }
-    
+
     /// <summary>
-    /// Map RobocopyJobState to FileCopyJobState.
+    ///     Map RobocopyJobState to FileCopyJobState.
     /// </summary>
     private static FileCopyJobState MapJobState(RobocopyJobState state)
     {
@@ -101,9 +101,9 @@ public static class FileCopyProgressMapper
             _ => FileCopyJobState.Ready
         };
     }
-    
+
     /// <summary>
-    /// Map FileCopyJobState to RobocopyJobState.
+    ///     Map FileCopyJobState to RobocopyJobState.
     /// </summary>
     private static RobocopyJobState MapJobState(FileCopyJobState state)
     {
@@ -116,7 +116,8 @@ public static class FileCopyProgressMapper
             FileCopyJobState.Completed => RobocopyJobState.Completed,
             FileCopyJobState.Cancelled => RobocopyJobState.Cancelled,
             FileCopyJobState.Failed => RobocopyJobState.Failed,
-            FileCopyJobState.Verifying => RobocopyJobState.Running, // Map to Running since Verifying doesn't exist in Robocopy
+            FileCopyJobState.Verifying => RobocopyJobState
+                .Running, // Map to Running since Verifying doesn't exist in Robocopy
             _ => RobocopyJobState.Ready
         };
     }

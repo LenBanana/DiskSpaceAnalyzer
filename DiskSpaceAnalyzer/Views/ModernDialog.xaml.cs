@@ -13,9 +13,9 @@ public partial class ModernDialog : Window
         InitializeComponent();
         _viewModel = viewModel;
         DataContext = _viewModel;
-        
+
         Loaded += OnLoaded;
-        
+
         // Set default button focus
         if (_viewModel.ShowInput)
         {

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,6 +10,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiskSpaceAnalyzer.Models;
 using DiskSpaceAnalyzer.Services;
+using DiskSpaceAnalyzer.Services.Mft;
 using DiskSpaceAnalyzer.Views.Robocopy;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -18,6 +20,7 @@ public partial class MainViewModel : BaseViewModel
 {
     private readonly IDialogService _dialogService;
     private readonly FileSystemService _fileSystemService;
+    private readonly MftFileSystemService _mftFileSystemService;
     private readonly ParallelFileSystemService _parallelFileSystemService;
     private readonly IServiceProvider _serviceProvider;
     private CancellationTokenSource? _cancellationTokenSource;
@@ -40,21 +43,24 @@ public partial class MainViewModel : BaseViewModel
     [NotifyCanExecuteChangedFor(nameof(StartScanCommand))]
     private string _selectedPath = string.Empty;
 
+    [ObservableProperty] private ScanEngine _selectedScanEngine = ScanEngine.Parallel;
+
     [ObservableProperty] private ScanMode _selectedScanMode = ScanMode.Recursive;
 
     [ObservableProperty] private SortDirection _selectedSortDirection = SortDirection.Descending;
 
     [ObservableProperty] private SortMode _selectedSortMode = SortMode.Size;
-
-    [ObservableProperty] private bool _useParallelProcessing = true;
+    private bool _suppressEngineRevert;
 
     [ObservableProperty] private bool _trackIndividualFiles = true;
 
     public MainViewModel(FileSystemService fileSystemService, ParallelFileSystemService parallelFileSystemService,
+        MftFileSystemService mftFileSystemService,
         IDialogService dialogService, IServiceProvider serviceProvider)
     {
         _fileSystemService = fileSystemService;
         _parallelFileSystemService = parallelFileSystemService;
+        _mftFileSystemService = mftFileSystemService;
         _currentFileSystemService = parallelFileSystemService;
         _dialogService = dialogService;
         _serviceProvider = serviceProvider;
@@ -67,13 +73,19 @@ public partial class MainViewModel : BaseViewModel
         FileItemViewModel.ErrorHandler = (title, message) => _dialogService.ShowError(title, message);
 
         LoadAvailableDrives();
-    }
-    
-    [RelayCommand]
-    private void OpenRobocopy()
-    {
-        var window = _serviceProvider.GetRequiredService<RobocopyWindow>();
-        window.Show();
+
+        // If we were relaunched elevated specifically for MFT, restore path + engine.
+        if (App.LaunchedWithMftRequested)
+        {
+            if (!string.IsNullOrWhiteSpace(App.LaunchedWithPath) &&
+                Directory.Exists(App.LaunchedWithPath))
+            {
+                SelectedPath = App.LaunchedWithPath!;
+                _lastSelectedPath = SelectedPath;
+            }
+
+            SelectedScanEngine = ScanEngine.Mft;
+        }
     }
 
     public ObservableCollection<DirectoryItemViewModel> DirectoryItems { get; }
@@ -90,6 +102,13 @@ public partial class MainViewModel : BaseViewModel
             return $"Scanned {ScanResult.TotalDirectories:N0} directories and {ScanResult.TotalFiles:N0} files " +
                    $"({FormatBytes(ScanResult.TotalSize)}) in {ScanResult.ScanDuration.TotalSeconds:F1} seconds";
         }
+    }
+
+    [RelayCommand]
+    private void OpenRobocopy()
+    {
+        var window = _serviceProvider.GetRequiredService<RobocopyWindow>();
+        window.Show();
     }
 
     private void LoadAvailableDrives()
@@ -139,6 +158,7 @@ public partial class MainViewModel : BaseViewModel
         // Update file tracking setting on services
         _fileSystemService.TrackIndividualFiles = TrackIndividualFiles;
         _parallelFileSystemService.TrackIndividualFiles = TrackIndividualFiles;
+        _mftFileSystemService.TrackIndividualFiles = TrackIndividualFiles;
 
         var progress = new Progress<ScanProgress>(UpdateProgress);
         DirectoryItems.Clear();
@@ -283,14 +303,68 @@ public partial class MainViewModel : BaseViewModel
         foreach (var item in items) SelectedItems.Add(item);
     }
 
-    partial void OnUseParallelProcessingChanged(bool value)
+    partial void OnSelectedScanEngineChanged(ScanEngine value)
     {
-        _currentFileSystemService = value
-            ? _parallelFileSystemService
-            : _fileSystemService;
-        
-        // Sync file tracking setting
+        // Re-entrant guard: when we revert after a failed elevation request,
+        // don't recurse into this handler and trigger the prompt a second time.
+        if (_suppressEngineRevert) return;
+
+        switch (value)
+        {
+            case ScanEngine.Sequential:
+                _currentFileSystemService = _fileSystemService;
+                break;
+            case ScanEngine.Parallel:
+                _currentFileSystemService = _parallelFileSystemService;
+                break;
+            case ScanEngine.Mft:
+                if (!TryActivateMftEngine())
+                {
+                    _suppressEngineRevert = true;
+                    SelectedScanEngine = ScanEngine.Parallel;
+                    _suppressEngineRevert = false;
+                    _currentFileSystemService = _parallelFileSystemService;
+                    _currentFileSystemService.TrackIndividualFiles = TrackIndividualFiles;
+                    return;
+                }
+
+                _currentFileSystemService = _mftFileSystemService;
+                break;
+        }
+
         _currentFileSystemService.TrackIndividualFiles = TrackIndividualFiles;
+    }
+
+    private bool TryActivateMftEngine()
+    {
+        // Prefer a drive path for the NTFS check; if nothing is selected yet,
+        // assume C:\ which covers the common case.
+        var pathForCheck = string.IsNullOrWhiteSpace(SelectedPath) ? "C:\\" : SelectedPath;
+
+        if (!MftElevationHelper.IsNtfsVolume(pathForCheck))
+        {
+            _dialogService.ShowWarning(
+                "MFT unavailable",
+                $"'{pathForCheck}' is not on an NTFS volume.\n\n" +
+                "The MFT engine only works with locally-attached NTFS drives. " +
+                "The engine has been reverted to Parallel.");
+            return false;
+        }
+
+        if (MftElevationHelper.IsElevated()) return true;
+
+        var consent = _dialogService.ShowConfirmation(
+            "Administrator privileges required",
+            "MFT scanning reads the NTFS Master File Table directly from the raw " +
+            "volume, which requires administrator privileges.\n\n" +
+            "Restart Disk Space Analyzer as administrator now?");
+
+        if (!consent) return false;
+
+        // Pass the currently-selected path so that after the UAC-elevated relaunch
+        // the MFT engine is auto-selected and the scan can start immediately.
+        return MftElevationHelper.TryRequestElevatedRestart(
+            string.IsNullOrWhiteSpace(SelectedPath) ? null : SelectedPath);
     }
 
     private static string FormatBytes(long bytes)

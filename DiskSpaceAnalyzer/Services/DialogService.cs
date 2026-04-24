@@ -23,7 +23,7 @@ public class DialogService : IDialogService
     }
 
     #region Synchronous Methods (Backward Compatibility)
-    
+
     public void ShowError(string title, string message)
     {
         ShowDialog(title, message, DialogType.Error, DialogButton.OK, GetActiveWindow());
@@ -76,11 +76,11 @@ public class DialogService : IDialogService
         var result = dialog.ShowDialog();
         return result == true ? viewModel.InputText : null;
     }
-    
+
     #endregion
 
     #region Async Methods (Preferred)
-    
+
     public Task ShowErrorAsync(string title, string message, Window? owner = null)
     {
         return ShowDialogAsync(title, message, DialogType.Error, DialogButton.OK, owner);
@@ -113,7 +113,8 @@ public class DialogService : IDialogService
         return result == DialogResult.Yes;
     }
 
-    public async Task<string?> ShowInputAsync(string title, string message, string defaultValue = "", Window? owner = null)
+    public async Task<string?> ShowInputAsync(string title, string message, string defaultValue = "",
+        Window? owner = null)
     {
         var viewModel = new ModernDialogViewModel
         {
@@ -133,12 +134,13 @@ public class DialogService : IDialogService
         var result = await Task.Run(() => Application.Current.Dispatcher.Invoke(() => dialog.ShowDialog()));
         return result == true ? viewModel.InputText : null;
     }
-    
+
     #endregion
 
     #region Private Helper Methods
-    
-    private DialogResult ShowDialog(string title, string message, DialogType type, DialogButton buttons, Window? owner = null)
+
+    private DialogResult ShowDialog(string title, string message, DialogType type, DialogButton buttons,
+        Window? owner = null)
     {
         var viewModel = new ModernDialogViewModel
         {
@@ -157,7 +159,8 @@ public class DialogService : IDialogService
         return viewModel.Result;
     }
 
-    private Task<DialogResult> ShowDialogAsync(string title, string message, DialogType type, DialogButton buttons, Window? owner = null)
+    private Task<DialogResult> ShowDialogAsync(string title, string message, DialogType type, DialogButton buttons,
+        Window? owner = null)
     {
         return Task.Run(() =>
         {
@@ -183,7 +186,7 @@ public class DialogService : IDialogService
     }
 
     /// <summary>
-    /// Gets the currently active window or falls back to MainWindow
+    ///     Gets the currently active window or falls back to MainWindow
     /// </summary>
     private static Window? GetActiveWindow()
     {
@@ -191,17 +194,17 @@ public class DialogService : IDialogService
         var activeWindow = Application.Current.Windows
             .OfType<Window>()
             .FirstOrDefault(w => w.IsActive);
-        
+
         if (activeWindow != null)
             return activeWindow;
-        
+
         // Fall back to any visible window
         var visibleWindow = Application.Current.Windows
             .OfType<Window>()
             .FirstOrDefault(w => w.IsVisible);
-        
+
         return visibleWindow ?? Application.Current.MainWindow;
     }
-    
+
     #endregion
 }

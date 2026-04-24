@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -258,7 +259,7 @@ public class TreeMapControl : Canvas
 
         // Add click handler for navigation
         if (hasChildren || item.Children.Any()) rectangle.MouseLeftButtonDown += (_, _) => NavigateToDirectory(item);
-        
+
         // Add middle mouse button to open in Explorer
         rectangle.MouseDown += (_, e) =>
         {
@@ -390,10 +391,7 @@ public class TreeMapControl : Canvas
     {
         try
         {
-            if (System.IO.Directory.Exists(directory.FullPath))
-            {
-                Process.Start("explorer.exe", directory.FullPath);
-            }
+            if (Directory.Exists(directory.FullPath)) Process.Start("explorer.exe", directory.FullPath);
         }
         catch
         {
