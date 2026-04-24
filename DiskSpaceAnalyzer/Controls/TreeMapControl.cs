@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -257,6 +258,16 @@ public class TreeMapControl : Canvas
 
         // Add click handler for navigation
         if (hasChildren || item.Children.Any()) rectangle.MouseLeftButtonDown += (_, _) => NavigateToDirectory(item);
+        
+        // Add middle mouse button to open in Explorer
+        rectangle.MouseDown += (_, e) =>
+        {
+            if (e.ChangedButton == MouseButton.Middle)
+            {
+                OpenDirectoryInExplorer(item);
+                e.Handled = true;
+            }
+        };
 
         SetLeft(rectangle, rect.X);
         SetTop(rectangle, rect.Y);
@@ -373,6 +384,21 @@ public class TreeMapControl : Canvas
 
         CurrentRoot = directory;
         DirectoryClicked?.Invoke(this, directory);
+    }
+
+    private static void OpenDirectoryInExplorer(DirectoryItemViewModel directory)
+    {
+        try
+        {
+            if (System.IO.Directory.Exists(directory.FullPath))
+            {
+                Process.Start("explorer.exe", directory.FullPath);
+            }
+        }
+        catch
+        {
+            // Silently fail if we can't open Explorer
+        }
     }
 
     private static SolidColorBrush GetColorForDepthAndSize(DirectoryItemViewModel item, int depth)

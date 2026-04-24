@@ -21,6 +21,7 @@
         <converters:SizeToColorConverter x:Key="SizeToColorConverter" />
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
         <converters:IndexToDepthConverter x:Key="IndexToDepthConverter" />
+        <converters:SortModeToOpacityConverter x:Key="SortModeToOpacityConverter" />
 
         <!-- Storyboard for loading animation -->
         <Storyboard x:Key="LoadingAnimation" RepeatBehavior="Forever">
@@ -57,6 +58,7 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
@@ -105,7 +107,15 @@
                               Margin="8,0"
                               ToolTip="Enable high-performance parallel scanning" />
 
-                <ComboBox Grid.Column="4"
+                <ToggleButton Grid.Column="4"
+                              Height="40"
+                              Content="📄 Track Files"
+                              Style="{StaticResource ModernToggleButtonStyle}"
+                              IsChecked="{Binding TrackIndividualFiles}"
+                              Margin="8,0"
+                              ToolTip="Track individual files for detailed analysis (may increase memory usage)" />
+
+                <ComboBox Grid.Column="5"
                           Height="40"
                           Width="140"
                           SelectedItem="{Binding SelectedScanMode}"
@@ -118,7 +128,7 @@
                     </ComboBox.Items>
                 </ComboBox>
 
-                <Button Grid.Column="5"
+                <Button Grid.Column="6"
                         Height="40"
                         Style="{StaticResource ModernButtonStyle}"
                         Command="{Binding StartScanCommand}"
@@ -130,7 +140,7 @@
                     </StackPanel>
                 </Button>
 
-                <Button Grid.Column="7"
+                <Button Grid.Column="8"
                         Height="40"
                         Style="{StaticResource ModernButtonStyle}"
                         Command="{Binding CancelScanCommand}"
@@ -287,6 +297,236 @@
                                                          Maximum="100"
                                                          Style="{StaticResource ModernProgressBarStyle}"
                                                          Margin="26,8,0,0" />
+                                            
+                                            <!-- Top Files Expandable Section -->
+                                            <Expander Grid.Row="3" Grid.ColumnSpan="2"
+                                                      IsExpanded="{Binding IsFilesExpanded}"
+                                                      Margin="26,8,0,0"
+                                                      Visibility="{Binding HasFiles, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                <Expander.Header>
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        
+                                                        <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                                            <md:PackIcon Kind="FileMultiple" 
+                                                                         Width="14" Height="14" 
+                                                                         VerticalAlignment="Center"
+                                                                         Foreground="{StaticResource AccentBrush}"
+                                                                         Margin="0,0,6,0"/>
+                                                            <TextBlock Text="{Binding FileCountText}"
+                                                                       FontSize="11"
+                                                                       FontWeight="SemiBold"
+                                                                       Foreground="{StaticResource TextBrush}"
+                                                                       VerticalAlignment="Center" />
+                                                        </StackPanel>
+                                                        
+                                                        <!-- Files Not Tracked Badge -->
+                                                        <Border Grid.Column="1"
+                                                                Background="#22FF9800"
+                                                                BorderBrush="#FFFF9800"
+                                                                BorderThickness="1"
+                                                                CornerRadius="3"
+                                                                Padding="6,2"
+                                                                Margin="8,0,0,0"
+                                                                HorizontalAlignment="Left"
+                                                                VerticalAlignment="Center"
+                                                                Visibility="{Binding FilesNotTracked, Converter={StaticResource BoolToVisibilityConverter}}"
+                                                                ToolTip="Files not tracked (>10,000 files limit)">
+                                                            <TextBlock Text="⚠️ Not tracked"
+                                                                       FontSize="9"
+                                                                       FontWeight="SemiBold"
+                                                                       Foreground="#FFFF9800" />
+                                                        </Border>
+                                                        
+                                                        <!-- File Size Summary -->
+                                                        <TextBlock Grid.Column="2"
+                                                                   FontSize="10"
+                                                                   Foreground="{StaticResource SecondaryTextBrush}"
+                                                                   VerticalAlignment="Center"
+                                                                   Margin="8,0,0,0">
+                                                            <Run Text="Files: " />
+                                                            <Run Text="{Binding FormattedFilesSize, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}" />
+                                                            <Run Text=" | Subdirs: " />
+                                                            <Run Text="{Binding FormattedSubdirectoriesSize, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}" />
+                                                        </TextBlock>
+                                                    </Grid>
+                                                </Expander.Header>
+                                                
+                                                <StackPanel Margin="0,8,0,0">
+                                                    <!-- Sort and Show All Controls -->
+                                                    <Grid Margin="0,0,0,8">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        
+                                                        <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                                            <TextBlock Text="Sort:"
+                                                                       FontSize="10"
+                                                                       Foreground="{StaticResource SecondaryTextBrush}"
+                                                                       VerticalAlignment="Center"
+                                                                       Margin="0,0,6,0" />
+                                                            <Button Content="Size"
+                                                                    Command="{Binding SortFilesByCommand}"
+                                                                    CommandParameter="Size"
+                                                                    Style="{StaticResource ModernButtonStyle}"
+                                                                    Height="22"
+                                                                    FontSize="10"
+                                                                    Padding="8,2"
+                                                                    Margin="0,0,4,0">
+                                                                <Button.Opacity>
+                                                                    <MultiBinding Converter="{StaticResource SortModeToOpacityConverter}">
+                                                                        <Binding Path="CurrentSortMode" />
+                                                                        <Binding Source="Size" />
+                                                                    </MultiBinding>
+                                                                </Button.Opacity>
+                                                            </Button>
+                                                            <Button Content="Name"
+                                                                    Command="{Binding SortFilesByCommand}"
+                                                                    CommandParameter="Name"
+                                                                    Style="{StaticResource ModernButtonStyle}"
+                                                                    Height="22"
+                                                                    FontSize="10"
+                                                                    Padding="8,2"
+                                                                    Margin="0,0,4,0">
+                                                                <Button.Opacity>
+                                                                    <MultiBinding Converter="{StaticResource SortModeToOpacityConverter}">
+                                                                        <Binding Path="CurrentSortMode" />
+                                                                        <Binding Source="Name" />
+                                                                    </MultiBinding>
+                                                                </Button.Opacity>
+                                                            </Button>
+                                                            <Button Content="Date"
+                                                                    Command="{Binding SortFilesByCommand}"
+                                                                    CommandParameter="Date"
+                                                                    Style="{StaticResource ModernButtonStyle}"
+                                                                    Height="22"
+                                                                    FontSize="10"
+                                                                    Padding="8,2">
+                                                                <Button.Opacity>
+                                                                    <MultiBinding Converter="{StaticResource SortModeToOpacityConverter}">
+                                                                        <Binding Path="CurrentSortMode" />
+                                                                        <Binding Source="Date" />
+                                                                    </MultiBinding>
+                                                                </Button.Opacity>
+                                                            </Button>
+                                                        </StackPanel>
+                                                        
+                                                        <Button Grid.Column="2"
+                                                                Command="{Binding ToggleShowAllFilesCommand}"
+                                                                Style="{StaticResource ModernButtonStyle}"
+                                                                Height="22"
+                                                                FontSize="10"
+                                                                Padding="10,2"
+                                                                Visibility="{Binding HasMoreFiles, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                            <Button.Content>
+                                                                <TextBlock>
+                                                                    <TextBlock.Style>
+                                                                        <Style TargetType="TextBlock">
+                                                                            <Setter Property="Text" Value="Show All Files" />
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding ShowAllFiles}" Value="True">
+                                                                                    <Setter Property="Text" Value="Show Top 10" />
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </TextBlock.Style>
+                                                                </TextBlock>
+                                                            </Button.Content>
+                                                        </Button>
+                                                    </Grid>
+                                                    
+                                                    <!-- File List -->
+                                                    <ItemsControl ItemsSource="{Binding DisplayedFiles}">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate DataType="{x:Type viewModels:FileItemViewModel}">
+                                                                <Border Background="Transparent"
+                                                                        BorderBrush="{StaticResource BorderBrush}"
+                                                                        BorderThickness="0,0,0,0.5"
+                                                                        Padding="8,6"
+                                                                        Margin="0,0,0,2">
+                                                                    <Border.ContextMenu>
+                                                                        <ContextMenu>
+                                                                            <MenuItem Header="Open" 
+                                                                                      Command="{Binding OpenFileCommand}">
+                                                                                <MenuItem.Icon>
+                                                                                    <md:PackIcon Kind="OpenInNew" />
+                                                                                </MenuItem.Icon>
+                                                                            </MenuItem>
+                                                                            <MenuItem Header="Show in Explorer" 
+                                                                                      Command="{Binding ShowInExplorerCommand}">
+                                                                                <MenuItem.Icon>
+                                                                                    <md:PackIcon Kind="FolderOpen" />
+                                                                                </MenuItem.Icon>
+                                                                            </MenuItem>
+                                                                            <Separator />
+                                                                            <MenuItem Header="Copy Path" 
+                                                                                      Command="{Binding CopyPathCommand}">
+                                                                                <MenuItem.Icon>
+                                                                                    <md:PackIcon Kind="ContentCopy" />
+                                                                                </MenuItem.Icon>
+                                                                            </MenuItem>
+                                                                        </ContextMenu>
+                                                                    </Border.ContextMenu>
+                                                                    
+                                                                    <Grid>
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition Width="Auto" />
+                                                                            <ColumnDefinition Width="Auto" />
+                                                                            <ColumnDefinition Width="*" />
+                                                                            <ColumnDefinition Width="Auto" />
+                                                                        </Grid.ColumnDefinitions>
+                                                                        
+                                                                        <!-- File Icon -->
+                                                                        <md:PackIcon Grid.Column="0"
+                                                                                     Kind="{Binding FileTypeIcon}"
+                                                                                     Width="14" Height="14"
+                                                                                     VerticalAlignment="Center"
+                                                                                     Foreground="{StaticResource AccentBrush}"
+                                                                                     Margin="0,0,8,0" />
+                                                                        
+                                                                        <!-- Extension Badge -->
+                                                                        <Border Grid.Column="1"
+                                                                                Background="{Binding ExtensionBadgeColor}"
+                                                                                CornerRadius="3"
+                                                                                Padding="4,2"
+                                                                                Margin="0,0,8,0"
+                                                                                VerticalAlignment="Center">
+                                                                            <TextBlock Text="{Binding Extension}"
+                                                                                       FontSize="9"
+                                                                                       FontWeight="Bold"
+                                                                                       Foreground="White" />
+                                                                        </Border>
+                                                                        
+                                                                        <!-- File Name -->
+                                                                        <TextBlock Grid.Column="2"
+                                                                                   Text="{Binding Name}"
+                                                                                   FontSize="11"
+                                                                                   Foreground="{StaticResource TextBrush}"
+                                                                                   TextTrimming="CharacterEllipsis"
+                                                                                   VerticalAlignment="Center"
+                                                                                   ToolTip="{Binding FullPath}" />
+                                                                        
+                                                                        <!-- File Size -->
+                                                                        <TextBlock Grid.Column="3"
+                                                                                   Text="{Binding FormattedSize}"
+                                                                                   FontSize="11"
+                                                                                   FontWeight="SemiBold"
+                                                                                   Foreground="{StaticResource AccentBrush}"
+                                                                                   VerticalAlignment="Center"
+                                                                                   Margin="8,0,0,0" />
+                                                                    </Grid>
+                                                                </Border>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </StackPanel>
+                                            </Expander>
                                         </Grid>
                                     </Border>
                                 </DataTemplate>
@@ -328,7 +568,7 @@
                                        FontWeight="SemiBold"
                                        VerticalAlignment="Center" 
                                        Margin="8,0,16,0"/>
-                            <TextBlock Text="Click rectangles to navigate • Right-click to go back" 
+                            <TextBlock Text="Left-click to navigate • Right-click to go back • Middle-click to open in Explorer" 
                                        Foreground="{StaticResource SecondaryTextBrush}" 
                                        FontSize="11"
                                        VerticalAlignment="Center"/>

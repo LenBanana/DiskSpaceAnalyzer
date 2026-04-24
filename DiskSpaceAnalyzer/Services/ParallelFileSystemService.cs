@@ -11,35 +11,84 @@ namespace DiskSpaceAnalyzer.Services;
 
 public class ParallelFileSystemService : IFileSystemService
 {
-    // Conservative parallelism settings
+    // Bound I/O concurrency to avoid saturating the file-system driver queue.
+    // Only the directory-listing phase is gated; recursion proceeds freely so
+    // every level of the tree is explored concurrently.
     private static readonly int OptimalParallelism = Math.Max(2, Environment.ProcessorCount / 2);
-    private static readonly int ParallelThreshold = 3; // Only parallelize if >= 3 subdirectories
 
-    // Progress tracking
-    private long _processedItems;
+    private const int MaxFilesPerDirectory = 10_000;
+
+    public bool TrackIndividualFiles { get; set; } = true;
+
+    // -------------------------------------------------------------------------
+    // Per-scan context: groups all mutable scan state so the service is
+    // re-entrant and state never leaks between sequential or concurrent calls.
+    // -------------------------------------------------------------------------
+    private sealed class ScanContext : IDisposable
+    {
+        public readonly ConcurrentQueue<string> Errors = new();
+
+        // The semaphore gates directory-listing I/O globally across all
+        // recursive levels.  It is released before any child tasks are launched
+        // so parents never hold a slot while waiting for children (no deadlock).
+        public readonly SemaphoreSlim Semaphore;
+
+        public readonly bool TrackFiles;
+
+        private long _processedItems;
+        private long _totalFiles;
+        private long _totalDirectories;
+        private int _errorCount;
+
+        public ScanContext(int parallelism, bool trackFiles)
+        {
+            Semaphore = new SemaphoreSlim(parallelism, parallelism);
+            TrackFiles = trackFiles;
+        }
+
+        public long IncrementProcessed() => Interlocked.Increment(ref _processedItems);
+        public void AddFiles(long count) => Interlocked.Add(ref _totalFiles, count);
+        public void IncrementDirectories() => Interlocked.Increment(ref _totalDirectories);
+
+        public void AddError(string message)
+        {
+            Errors.Enqueue(message);
+            Interlocked.Increment(ref _errorCount);
+        }
+
+        public long TotalFiles => Interlocked.Read(ref _totalFiles);
+        public long TotalDirectories => Interlocked.Read(ref _totalDirectories);
+
+        // Volatile read is sufficient: used only for approximate progress display.
+        public int ErrorCount => Volatile.Read(ref _errorCount);
+
+        public void Dispose() => Semaphore.Dispose();
+    }
 
     public async Task<ScanResult> ScanDirectoryAsync(string path, ScanMode mode, IProgress<ScanProgress> progress,
         CancellationToken cancellationToken)
     {
         var startTime = DateTime.UtcNow;
-        var errors = new ConcurrentBag<string>();
         var result = new ScanResult();
 
-        // Reset progress tracking
-        _processedItems = 0;
+        using var ctx = new ScanContext(OptimalParallelism, TrackIndividualFiles);
 
         try
         {
-            var rootItem = await ScanDirectoryInternalAsync(path, mode, progress, cancellationToken, errors, 0);
+            var rootItem = await ScanDirectoryInternalAsync(path, mode, progress, cancellationToken, ctx, 0);
 
             result.RootDirectory = rootItem;
             result.TotalSize = rootItem.Size;
-            result.TotalFiles = CountFiles(rootItem);
-            result.TotalDirectories = CountDirectories(rootItem);
+            result.TotalFiles = ctx.TotalFiles;
+            result.TotalDirectories = ctx.TotalDirectories;
+        }
+        catch (OperationCanceledException)
+        {
+            throw; // Propagate cancellation to the caller; don't treat it as an error.
         }
         catch (Exception ex)
         {
-            errors.Add($"Failed to scan {path}: {ex.Message}");
+            ctx.AddError($"Failed to scan {path}: {ex.Message}");
             result.RootDirectory = new DirectoryItem
             {
                 Name = Path.GetFileName(path) ?? path,
@@ -49,23 +98,19 @@ public class ParallelFileSystemService : IFileSystemService
         }
 
         result.ScanDuration = DateTime.UtcNow - startTime;
-        result.ErrorCount = errors.Count;
-        foreach (var error in errors) result.Errors.Add(error);
+        while (ctx.Errors.TryDequeue(out var error))
+            result.Errors.Add(error);
+        result.ErrorCount = result.Errors.Count;
 
         return result;
     }
 
-    public IEnumerable<string> GetDrives()
-    {
-        return DriveInfo.GetDrives()
+    public IEnumerable<string> GetDrives() =>
+        DriveInfo.GetDrives()
             .Where(d => d.IsReady)
             .Select(d => d.RootDirectory.FullName);
-    }
 
-    public bool DirectoryExists(string path)
-    {
-        return Directory.Exists(path);
-    }
+    public bool DirectoryExists(string path) => Directory.Exists(path);
 
     public DirectoryItem GetDirectoryInfo(string path)
     {
@@ -80,12 +125,13 @@ public class ParallelFileSystemService : IFileSystemService
         };
     }
 
-    private async Task<DirectoryItem> ScanDirectoryInternalAsync(
+    // Static: uses only ScanContext state and constants, no instance fields.
+    private static async Task<DirectoryItem> ScanDirectoryInternalAsync(
         string path,
         ScanMode mode,
         IProgress<ScanProgress>? progress,
         CancellationToken cancellationToken,
-        ConcurrentBag<string> errors,
+        ScanContext ctx,
         int depth)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -97,105 +143,160 @@ public class ParallelFileSystemService : IFileSystemService
             IsDirectory = true
         };
 
+        var files = new List<FileInfo>();
+        var subdirs = new List<DirectoryInfo>();
+
+        // ----------------------------------------------------------------
+        // Phase 1 – Enumerate this directory.
+        // The semaphore is acquired for the listing I/O only, then released
+        // BEFORE any await that recurses into children.  This ensures a
+        // parent never holds a slot while waiting for its children, which
+        // would deadlock as the tree grows deeper than OptimalParallelism.
+        // ----------------------------------------------------------------
+        await ctx.Semaphore.WaitAsync(cancellationToken);
         try
         {
-            var directoryInfo = new DirectoryInfo(path);
-            item.LastModified = directoryInfo.LastWriteTime;
+            var dirInfo = new DirectoryInfo(path);
+            item.LastModified = dirInfo.LastWriteTime;
 
-            // Report progress
-            Interlocked.Increment(ref _processedItems);
-            if (_processedItems % 10 == 0 || depth == 0)
-                progress?.Report(new ScanProgress
+            var n = ctx.IncrementProcessed();
+            if (n % 10 == 0 || depth == 0)
+                progress?.Report(new ScanProgress { CurrentPath = path, ErrorCount = ctx.ErrorCount });
+
+            try
+            {
+                // Single pass: one OS directory-read instead of separate
+                // GetFiles() + GetDirectories() (two reads of the same inode).
+                foreach (var entry in dirInfo.EnumerateFileSystemInfos())
                 {
-                    CurrentPath = path,
-                    ErrorCount = errors.Count
-                });
+                    if (entry is FileInfo fi) files.Add(fi);
+                    else if (entry is DirectoryInfo di) subdirs.Add(di);
+                }
+            }
+            catch (UnauthorizedAccessException)
+            {
+                item.Error = "Access denied";
+                ctx.AddError($"Access denied to directory: {path}");
+            }
+            catch (Exception ex)
+            {
+                item.Error = ex.Message;
+                ctx.AddError($"Error scanning directory {path}: {ex.Message}");
+            }
+        }
+        finally
+        {
+            ctx.Semaphore.Release(); // Must be released before any child tasks are awaited.
+        }
 
-            // Get files and directories separately to avoid collection modification issues
-            var files = directoryInfo.GetFiles().ToArray();
-            var directories = directoryInfo.GetDirectories().ToArray();
+        item.FileCount = files.Count;
+        item.DirectoryCount = subdirs.Count;
+        ctx.IncrementDirectories();
+        ctx.AddFiles(files.Count);
 
-            item.FileCount = files.Length;
-            item.DirectoryCount = directories.Length;
+        // ----------------------------------------------------------------
+        // Phase 2 – Accumulate file sizes.
+        // FileInfo.Length is populated by EnumerateFileSystemInfos (Windows
+        // returns sizes in the directory listing), so no additional I/O here.
+        // ----------------------------------------------------------------
+        long totalSize = 0;
 
-            // Calculate file sizes
-            long totalSize = 0;
+        if (ctx.TrackFiles && files.Count > 0 && files.Count <= MaxFilesPerDirectory)
+        {
             foreach (var file in files)
+            {
                 try
                 {
-                    totalSize += file.Length;
+                    var fileSize = file.Length;
+                    totalSize += fileSize;
+                    item.Files.Add(new FileItem
+                    {
+                        Name = file.Name,
+                        FullPath = file.FullName,
+                        Size = fileSize,
+                        LastModified = file.LastWriteTime,
+                        Extension = file.Extension
+                    });
                 }
                 catch (Exception ex)
                 {
-                    errors.Add($"Cannot access file {file.FullName}: {ex.Message}");
+                    ctx.AddError($"Cannot access file {file.FullName}: {ex.Message}");
                 }
-
-            if (directories.Length > 0)
-            {
-                long subdirectoriesSize;
-
-                if (mode == ScanMode.Recursive)
-                {
-                    // Use parallel processing only for top levels with many directories
-                    if (depth <= 1 && directories.Length >= ParallelThreshold)
-                        subdirectoriesSize = await ProcessSubdirectoriesParallelAsync(
-                            item, directories, mode, progress, cancellationToken, errors, depth);
-                    else
-                        subdirectoriesSize = await ProcessSubdirectoriesSequentialAsync(
-                            item, directories, mode, progress, cancellationToken, errors, depth);
-                }
-                else
-                {
-                    // For top-level mode, calculate sizes in parallel
-                    subdirectoriesSize = await CalculateTopLevelSizesAsync(
-                        item, directories, progress, cancellationToken, errors);
-                }
-
-                totalSize += subdirectoriesSize;
             }
-
-            item.Size = totalSize;
-
-            // Calculate percentages
-            if (totalSize > 0 && item.Children.Count > 0)
+        }
+        else
+        {
+            foreach (var file in files)
             {
-                var totalSizeDouble = (double)totalSize;
-                foreach (var child in item.Children) child.PercentageOfParent = child.Size / totalSizeDouble * 100.0;
+                try { totalSize += file.Length; }
+                catch (Exception ex) { ctx.AddError($"Cannot access file {file.FullName}: {ex.Message}"); }
             }
+        }
 
-            // Report completion for root-level items
-            if (depth == 0)
-                progress?.Report(new ScanProgress
+        // ----------------------------------------------------------------
+        // Phase 3 – Process subdirectories.
+        // The semaphore is already released above, so each child task can
+        // acquire its own I/O slot independently.  Task.WhenAll enables
+        // full-tree concurrency (not just the top two levels), globally
+        // bounded by the semaphore.
+        // ----------------------------------------------------------------
+        if (subdirs.Count > 0)
+        {
+            if (mode == ScanMode.Recursive)
+            {
+                var childTasks = subdirs.Select(subDir =>
+                    ScanDirectoryInternalAsync(subDir.FullName, mode, progress, cancellationToken, ctx, depth + 1));
+
+                var children = await Task.WhenAll(childTasks);
+
+                foreach (var child in children)
                 {
-                    CurrentPath = item.FullPath,
-                    CompletedItem = item,
-                    ErrorCount = errors.Count
-                });
+                    child.Parent = item;
+                    item.Children.Add(child);
+                    totalSize += child.Size;
+                }
+            }
+            else
+            {
+                // Top-level mode: compute each subdirectory's total size without
+                // building the recursive tree structure.
+                totalSize += await CalculateTopLevelSizesAsync(item, subdirs, cancellationToken, ctx);
+            }
         }
-        catch (UnauthorizedAccessException)
+
+        item.Size = totalSize;
+
+        // Percentages relative to the FULL directory size (files + subdirectories
+        // combined), so a file's share is directly comparable to a sibling
+        // subdirectory's share.  Previously, file percentages were calculated
+        // against the files-only subtotal, making them appear inflated.
+        if (totalSize > 0)
         {
-            item.Error = "Access denied";
-            errors.Add($"Access denied to directory: {path}");
+            var totalDouble = (double)totalSize;
+            foreach (var child in item.Children)
+                child.PercentageOfParent = child.Size / totalDouble * 100.0;
+            foreach (var file in item.Files)
+                file.PercentageOfParent = file.Size / totalDouble * 100.0;
         }
-        catch (Exception ex)
-        {
-            item.Error = ex.Message;
-            errors.Add($"Error scanning directory {path}: {ex.Message}");
-        }
+
+        if (depth == 0)
+            progress?.Report(new ScanProgress
+            {
+                CurrentPath = item.FullPath,
+                CompletedItem = item,
+                ErrorCount = ctx.ErrorCount
+            });
 
         return item;
     }
 
-    private async Task<long> ProcessSubdirectoriesParallelAsync(
+    private static async Task<long> CalculateTopLevelSizesAsync(
         DirectoryItem parentItem,
-        DirectoryInfo[] directories,
-        ScanMode mode,
-        IProgress<ScanProgress>? progress,
+        List<DirectoryInfo> directories,
         CancellationToken cancellationToken,
-        ConcurrentBag<string> errors,
-        int depth)
+        ScanContext ctx)
     {
-        var results = new ConcurrentBag<(DirectoryItem item, long size)>();
+        var results = new ConcurrentBag<(DirectoryItem Item, long Size)>();
 
         await Parallel.ForEachAsync(
             directories,
@@ -208,126 +309,10 @@ public class ParallelFileSystemService : IFileSystemService
             {
                 try
                 {
-                    var childItem = await ScanDirectoryInternalAsync(
-                        subDir.FullName, mode, progress, ct, errors, depth + 1);
-
-                    childItem.Parent = parentItem;
-                    results.Add((childItem, childItem.Size));
-
-                    // Report progress for top-level directories
-                    if (depth == 0)
-                        progress?.Report(new ScanProgress
-                        {
-                            CurrentPath = childItem.FullPath,
-                            CompletedItem = childItem,
-                            ErrorCount = errors.Count
-                        });
-                }
-                catch (UnauthorizedAccessException)
-                {
-                    errors.Add($"Access denied to directory: {subDir.FullName}");
-                    var errorItem = new DirectoryItem
-                    {
-                        Name = subDir.Name,
-                        FullPath = subDir.FullName,
-                        Error = "Access denied",
-                        Parent = parentItem
-                    };
-                    results.Add((errorItem, 0));
-                }
-                catch (Exception ex)
-                {
-                    errors.Add($"Error scanning directory {subDir.FullName}: {ex.Message}");
-                }
-            });
-
-        // Add results to parent and calculate total size
-        long totalSize = 0;
-        foreach (var (item, size) in results)
-        {
-            parentItem.Children.Add(item);
-            totalSize += size;
-        }
-
-        return totalSize;
-    }
-
-    private async Task<long> ProcessSubdirectoriesSequentialAsync(
-        DirectoryItem parentItem,
-        DirectoryInfo[] directories,
-        ScanMode mode,
-        IProgress<ScanProgress>? progress,
-        CancellationToken cancellationToken,
-        ConcurrentBag<string> errors,
-        int depth)
-    {
-        long totalSize = 0;
-
-        foreach (var subDir in directories)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            try
-            {
-                var childItem = await ScanDirectoryInternalAsync(
-                    subDir.FullName, mode, progress, cancellationToken, errors, depth + 1);
-
-                childItem.Parent = parentItem;
-                parentItem.Children.Add(childItem);
-                totalSize += childItem.Size;
-
-                // Report progress for top-level directories
-                if (depth == 0)
-                    progress?.Report(new ScanProgress
-                    {
-                        CurrentPath = childItem.FullPath,
-                        CompletedItem = childItem,
-                        ErrorCount = errors.Count
-                    });
-            }
-            catch (UnauthorizedAccessException)
-            {
-                errors.Add($"Access denied to directory: {subDir.FullName}");
-                var errorItem = new DirectoryItem
-                {
-                    Name = subDir.Name,
-                    FullPath = subDir.FullName,
-                    Error = "Access denied",
-                    Parent = parentItem
-                };
-                parentItem.Children.Add(errorItem);
-            }
-            catch (Exception ex)
-            {
-                errors.Add($"Error scanning directory {subDir.FullName}: {ex.Message}");
-            }
-        }
-
-        return totalSize;
-    }
-
-    private async Task<long> CalculateTopLevelSizesAsync(
-        DirectoryItem parentItem,
-        DirectoryInfo[] directories,
-        IProgress<ScanProgress>? progress,
-        CancellationToken cancellationToken,
-        ConcurrentBag<string> errors)
-    {
-        var results = new ConcurrentBag<(DirectoryItem item, long size)>();
-
-        await Parallel.ForEachAsync(
-            directories,
-            new ParallelOptions
-            {
-                CancellationToken = cancellationToken,
-                MaxDegreeOfParallelism = OptimalParallelism
-            },
-            async (subDir, ct) =>
-            {
-                try
-                {
-                    var size = await Task.Run(() =>
-                        CalculateDirectorySize(subDir.FullName, ct, errors), ct);
+                    // CalculateDirectorySizeAndCount is CPU/I/O bound; run on the
+                    // thread pool to keep the UI thread free.
+                    var (size, fileCount) = await Task.Run(
+                        () => CalculateDirectorySizeAndCount(subDir.FullName, ct, ctx), ct);
 
                     var childItem = new DirectoryItem
                     {
@@ -336,15 +321,17 @@ public class ParallelFileSystemService : IFileSystemService
                         LastModified = subDir.LastWriteTime,
                         IsDirectory = true,
                         Parent = parentItem,
-                        FileCount = GetFileCount(subDir),
+                        FileCount = fileCount,
                         Size = size
                     };
 
+                    ctx.AddFiles(fileCount);
+                    ctx.IncrementDirectories();
                     results.Add((childItem, size));
                 }
                 catch (Exception ex)
                 {
-                    errors.Add($"Error calculating size for {subDir.FullName}: {ex.Message}");
+                    ctx.AddError($"Error calculating size for {subDir.FullName}: {ex.Message}");
                 }
             });
 
@@ -358,12 +345,17 @@ public class ParallelFileSystemService : IFileSystemService
         return totalSize;
     }
 
-    private static long CalculateDirectorySize(
+    // Replaces the previous separate CalculateDirectorySize + GetFileCount pair,
+    // which caused a double traversal of every subdirectory in top-level mode.
+    // Now a single iterative walk (stack-based, no recursion depth limit) returns
+    // both the total size and the total recursive file count.
+    private static (long Size, long FileCount) CalculateDirectorySizeAndCount(
         string path,
         CancellationToken cancellationToken,
-        ConcurrentBag<string> errors)
+        ScanContext ctx)
     {
         long totalSize = 0;
+        long fileCount = 0;
         var stack = new Stack<DirectoryInfo>();
         stack.Push(new DirectoryInfo(path));
 
@@ -373,56 +365,37 @@ public class ParallelFileSystemService : IFileSystemService
 
             try
             {
-                // Get files and add their sizes
-                foreach (var file in currentDir.GetFiles())
+                // Single-pass enumeration: one directory read for both files and subdirs.
+                foreach (var entry in currentDir.EnumerateFileSystemInfos())
+                {
                     try
                     {
-                        totalSize += file.Length;
+                        if (entry is FileInfo fi)
+                        {
+                            totalSize += fi.Length;
+                            fileCount++;
+                        }
+                        else if (entry is DirectoryInfo di)
+                        {
+                            stack.Push(di);
+                        }
                     }
                     catch (Exception ex)
                     {
-                        errors.Add($"Cannot access file {file.FullName}: {ex.Message}");
+                        ctx.AddError($"Cannot access entry {entry.FullName}: {ex.Message}");
                     }
-
-                // Add subdirectories to stack
-                foreach (var subDir in currentDir.GetDirectories()) stack.Push(subDir);
+                }
             }
             catch (UnauthorizedAccessException)
             {
-                errors.Add($"Access denied to directory: {currentDir.FullName}");
+                ctx.AddError($"Access denied to directory: {currentDir.FullName}");
             }
             catch (Exception ex)
             {
-                errors.Add($"Error accessing directory {currentDir.FullName}: {ex.Message}");
+                ctx.AddError($"Error accessing directory {currentDir.FullName}: {ex.Message}");
             }
         }
 
-        return totalSize;
-    }
-
-    private static long GetFileCount(DirectoryInfo directory)
-    {
-        try
-        {
-            return directory.GetFiles("*", SearchOption.AllDirectories).LongCount();
-        }
-        catch
-        {
-            return 0;
-        }
-    }
-
-    private static long CountFiles(DirectoryItem item)
-    {
-        var count = item.FileCount;
-        foreach (var child in item.Children) count += CountFiles(child);
-        return count;
-    }
-
-    private static long CountDirectories(DirectoryItem item)
-    {
-        var count = item.DirectoryCount;
-        foreach (var child in item.Children) count += CountDirectories(child);
-        return count;
+        return (totalSize, fileCount);
     }
 }

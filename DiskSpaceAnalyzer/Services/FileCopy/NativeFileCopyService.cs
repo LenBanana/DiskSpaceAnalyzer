@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -51,8 +52,17 @@ public class NativeFileCopyService : IFileCopyService
     private long _lastProgressReportTicks;
     private long _lastProgressReportBytes;
     
-    // Configuration
-    private const int DefaultBufferSize = 1024 * 1024; // 1 MB
+    // Buffer pooling for zero-allocation copies
+    private readonly ArrayPool<byte> _bufferPool = ArrayPool<byte>.Shared;
+    
+    // Pattern matching cache for better performance with repeated patterns
+    private readonly ConcurrentDictionary<string, System.Text.RegularExpressions.Regex> _patternCache = new();
+    
+    // Configuration - Adaptive buffer sizes for optimal performance
+    private const int SmallFileBufferSize = 65536; // 64 KB for files < 1 MB
+    private const int DefaultBufferSize = 1024 * 1024; // 1 MB for files 1-100 MB
+    private const int LargeFileBufferSize = 4194304; // 4 MB for files > 100 MB
+    private const long LargeFileThreshold = 104857600; // 100 MB
     private const int ProgressReportIntervalMs = 100;
     private const long ProgressReportIntervalBytes = 10 * 1024 * 1024; // 10 MB
     
@@ -121,57 +131,163 @@ public class NativeFileCopyService : IFileCopyService
             
             var scanResult = await _scanService.ScanAsync(scanOptions, scanProgress, cancellationToken);
             
-            // Transfer scan results and apply additional filtering
-            _filesToCopy.Clear();
-            _filesSkipped = 0;
-            
-            foreach (var file in scanResult.Files)
+            // Process scan results on thread pool to avoid UI freeze
+            // This includes filtering, sorting, and directory creation
+            await Task.Run(() =>
             {
-                var fileOp = new FileOperationInfo
-                {
-                    SourcePath = file.SourcePath,
-                    DestinationPath = file.DestinationPath,
-                    RelativePath = file.RelativePath,
-                    Size = file.Size,
-                    LastModified = file.LastModified
-                };
+                // Transfer scan results and apply additional filtering
+                // Single-pass with combined byte calculation for efficiency
+                _filesToCopy.Clear();
+                _filesSkipped = 0;
+                long totalBytesAccumulator = 0;
+                int filesProcessed = 0;
                 
-                // Apply post-scan filters
-                
-                // Check IncludeFiles whitelist (if specified, only include matching files)
-                if (options.IncludeFiles.Count > 0)
+                foreach (var file in scanResult.Files)
                 {
-                    var fileName = Path.GetFileName(fileOp.SourcePath);
-                    bool matches = false;
-                    foreach (var pattern in options.IncludeFiles)
+                    // Check cancellation every 1000 files for responsiveness
+                    if (++filesProcessed % 1000 == 0)
+                        cancellationToken.ThrowIfCancellationRequested();
+                    
+                    var fileOp = new FileOperationInfo
                     {
-                        if (MatchesPattern(fileName, pattern))
+                        SourcePath = file.SourcePath,
+                        DestinationPath = file.DestinationPath,
+                        RelativePath = file.RelativePath,
+                        Size = file.Size,
+                        LastModified = file.LastModified
+                    };
+                    
+                    // Apply post-scan filters
+                    
+                    // Check IncludeFiles whitelist (if specified, only include matching files)
+                    if (options.IncludeFiles.Count > 0)
+                    {
+                        var fileName = Path.GetFileName(fileOp.SourcePath);
+                        bool matches = false;
+                        foreach (var pattern in options.IncludeFiles)
                         {
-                            matches = true;
-                            break;
+                            if (MatchesPattern(fileName, pattern))
+                            {
+                                matches = true;
+                                break;
+                            }
+                        }
+                        if (!matches)
+                        {
+                            _filesSkipped++;
+                            continue;
                         }
                     }
-                    if (!matches)
+                    
+                    // Check if file should be skipped (destination-based)
+                    if (ShouldSkipFile(fileOp, options))
                     {
                         _filesSkipped++;
                         continue;
                     }
+                    
+                    _filesToCopy.Add(fileOp);
+                    totalBytesAccumulator += fileOp.Size; // Calculate total bytes in same pass
                 }
                 
-                // Check if file should be skipped (destination-based)
-                if (ShouldSkipFile(fileOp, options))
-                {
-                    _filesSkipped++;
-                    continue;
-                }
+                // Check cancellation before expensive sort operation
+                cancellationToken.ThrowIfCancellationRequested();
                 
-                _filesToCopy.Add(fileOp);
-            }
+                // Sort files by size (large files first) for better parallel distribution
+                // Large files start early and complete around the same time, small files fill gaps
+                _filesToCopy.Sort((a, b) => b.Size.CompareTo(a.Size));
+                
+                // Update totals after filtering (using accumulated value instead of LINQ Sum)
+                _totalFiles = _filesToCopy.Count;
+                _totalDirectories = scanResult.TotalDirectories;
+                _totalBytes = totalBytesAccumulator;
+                
+            }, cancellationToken);
             
-            // Update totals after filtering
-            _totalFiles = _filesToCopy.Count;
-            _totalDirectories = scanResult.TotalDirectories;
-            _totalBytes = _filesToCopy.Sum(f => f.Size);
+            // Pre-create all destination directories before parallel copy phase
+            // This eliminates directory creation overhead and lock contention during copying
+            if (_totalFiles > 0)
+            {
+                ReportProgress(progress, FileCopyJobState.Scanning, "Creating directory structure...");
+                
+                await Task.Run(() =>
+                {
+                    // Extract unique directories efficiently using depth-indexed dictionary
+                    // Using HashSet at each depth for O(1) duplicate checking instead of O(n)
+                    var directoriesByDepth = new Dictionary<int, HashSet<string>>();
+                    int maxDepth = 0;
+                    
+                    foreach (var fileOp in _filesToCopy)
+                    {
+                        var destDir = Path.GetDirectoryName(fileOp.DestinationPath);
+                        if (string.IsNullOrEmpty(destDir))
+                            continue;
+                        
+                        // Calculate depth (number of separators)
+                        int depth = destDir.Count(c => c == Path.DirectorySeparatorChar);
+                        
+                        if (!directoriesByDepth.TryGetValue(depth, out var hashSet))
+                        {
+                            hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                            directoriesByDepth[depth] = hashSet;
+                        }
+                        
+                        // O(1) duplicate checking with HashSet
+                        hashSet.Add(destDir);
+                        
+                        if (depth > maxDepth)
+                            maxDepth = depth;
+                    }
+                    
+                    // Create directories depth-first (shallow to deep) for proper parent creation
+                    // Use parallel creation within each depth level for much better performance
+                    int totalDirs = directoriesByDepth.Values.Sum(set => set.Count);
+                    int dirsCreated = 0;
+                    
+                    for (int depth = 0; depth <= maxDepth; depth++)
+                    {
+                        if (!directoriesByDepth.TryGetValue(depth, out var dirsAtDepth))
+                            continue;
+                        
+                        // Create all directories at this depth in parallel
+                        // Safe because all parents exist (created at previous depth)
+                        var parallelOptions = new ParallelOptions
+                        {
+                            MaxDegreeOfParallelism = Math.Min(Environment.ProcessorCount * 2, 16),
+                            CancellationToken = cancellationToken
+                        };
+                        
+                        Parallel.ForEach(dirsAtDepth, parallelOptions, dir =>
+                        {
+                            try
+                            {
+                                Directory.CreateDirectory(dir);
+                                
+                                var currentCount = Interlocked.Increment(ref _directoriesCopied);
+                                var localDirsCreated = Interlocked.Increment(ref dirsCreated);
+                                
+                                // Report progress every 100 directories for large operations
+                                if (localDirsCreated % 100 == 0 || localDirsCreated == totalDirs)
+                                {
+                                    var progressPercent = (double)localDirsCreated / totalDirs * 100;
+                                    ReportProgress(progress, FileCopyJobState.Scanning, 
+                                        $"Creating directories... {localDirsCreated:N0}/{totalDirs:N0} ({progressPercent:F0}%)");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                _errors.Add(new FileCopyError
+                                {
+                                    FilePath = dir,
+                                    Message = $"Failed to create directory: {ex.Message}",
+                                    ErrorCode = ex.HResult,
+                                    Timestamp = DateTime.Now
+                                });
+                            }
+                        });
+                    }
+                }, cancellationToken);
+            }
             
             // Add scan errors to our error collection
             foreach (var scanError in scanResult.Errors)
@@ -571,24 +687,35 @@ public class NativeFileCopyService : IFileCopyService
     }
     
     /// <summary>
-    /// Simple wildcard pattern matching for file names.
+    /// Simple wildcard pattern matching for file names with caching.
     /// Supports * (any characters) and ? (single character).
+    /// Caches compiled regex patterns for better performance with repeated patterns.
     /// </summary>
     private bool MatchesPattern(string name, string pattern)
     {
+        // Fast path for match-all pattern
         if (pattern == "*")
             return true;
         
+        // Fast path for exact match (no wildcards)
         if (!pattern.Contains('*') && !pattern.Contains('?'))
             return name.Equals(pattern, StringComparison.OrdinalIgnoreCase);
         
-        // Convert wildcard pattern to regex
-        var regexPattern = "^" + System.Text.RegularExpressions.Regex.Escape(pattern)
-            .Replace("\\*", ".*")
-            .Replace("\\?", ".") + "$";
+        // Get or create cached regex for this pattern
+        var regex = _patternCache.GetOrAdd(pattern, p =>
+        {
+            // Convert wildcard pattern to regex
+            var regexPattern = "^" + System.Text.RegularExpressions.Regex.Escape(p)
+                .Replace("\\*", ".*")
+                .Replace("\\?", ".") + "$";
+            
+            return new System.Text.RegularExpressions.Regex(
+                regexPattern,
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase | 
+                System.Text.RegularExpressions.RegexOptions.Compiled);
+        });
         
-        return System.Text.RegularExpressions.Regex.IsMatch(name, regexPattern, 
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return regex.IsMatch(name);
     }
     
     #endregion
@@ -610,9 +737,6 @@ public class NativeFileCopyService : IFileCopyService
         Interlocked.Exchange(ref _lastProgressReportTicks, DateTime.Now.Ticks);
         Interlocked.Exchange(ref _lastProgressReportBytes, 0L);
         
-        // Thread-safe directory creation cache to avoid redundant calls
-        var createdDirectories = new ConcurrentDictionary<string, byte>();
-        
         await Parallel.ForEachAsync(_filesToCopy, parallelOptions, async (fileOp, ct) =>
         {
             // Check pause state
@@ -626,22 +750,10 @@ public class NativeFileCopyService : IFileCopyService
             
             try
             {
-                // Update current file
-                lock (_progressLock)
-                {
-                    _currentFile = fileOp.RelativePath;
-                    _currentFileSize = fileOp.Size;
-                    _currentFileBytesCopied = 0;
-                }
-                
-                // Ensure destination directory exists (thread-safe)
-                var destDir = Path.GetDirectoryName(fileOp.DestinationPath);
-                if (!string.IsNullOrEmpty(destDir) && createdDirectories.TryAdd(destDir, 0))
-                {
-                    // Only one thread will succeed in adding to the dictionary
-                    Directory.CreateDirectory(destDir); // Safe to call even if exists
-                    Interlocked.Increment(ref _directoriesCopied);
-                }
+                // Update current file (lock-free with volatile writes)
+                Volatile.Write(ref _currentFile, fileOp.RelativePath);
+                Interlocked.Exchange(ref _currentFileSize, fileOp.Size);
+                Interlocked.Exchange(ref _currentFileBytesCopied, 0);
                 
                 // Copy the file with retry logic
                 bool success = false;
@@ -744,43 +856,60 @@ public class NativeFileCopyService : IFileCopyService
         FileCopyOptions options,
         CancellationToken cancellationToken)
     {
-        var bufferSize = DefaultBufferSize;
+        // Adaptive buffer sizing for optimal performance across file sizes
+        int bufferSize;
         
-        // Get custom buffer size from extended options if specified
+        // Check for user override first (backwards compatibility)
         if (options.ExtendedOptions.TryGetValue("NativeBufferSize", out var bufferObj) && bufferObj is int customBuffer)
         {
             bufferSize = customBuffer;
         }
-        
-        var buffer = new byte[bufferSize];
-        
-        // Remove read-only attribute from destination if it exists (e.g., Git objects)
-        if (File.Exists(fileOp.DestinationPath))
+        else
         {
-            var destFileInfo = new FileInfo(fileOp.DestinationPath);
-            if (destFileInfo.IsReadOnly)
+            // Adaptive selection based on file size
+            bufferSize = fileOp.Size switch
             {
-                destFileInfo.IsReadOnly = false;
-            }
+                < 1048576 => SmallFileBufferSize,        // < 1 MB: 64 KB buffer
+                < LargeFileThreshold => DefaultBufferSize, // 1-100 MB: 1 MB buffer
+                _ => LargeFileBufferSize                   // > 100 MB: 4 MB buffer
+            };
         }
         
-        using var sourceStream = new FileStream(fileOp.SourcePath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize, FileOptions.Asynchronous | FileOptions.SequentialScan);
-        using var destStream = new FileStream(fileOp.DestinationPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize, FileOptions.Asynchronous | FileOptions.SequentialScan);
+        // Rent buffer from pool for zero-allocation copy
+        byte[] buffer = _bufferPool.Rent(bufferSize);
         
-        long totalBytesRead = 0;
-        int bytesRead;
-        
-        while ((bytesRead = await sourceStream.ReadAsync(buffer, 0, buffer.Length, cancellationToken)) > 0)
+        try
         {
-            await destStream.WriteAsync(buffer, 0, bytesRead, cancellationToken);
-            
-            totalBytesRead += bytesRead;
-            Interlocked.Add(ref _bytesCopied, bytesRead);
-            
-            lock (_progressLock)
+            // Remove read-only attribute from destination if it exists (e.g., Git objects)
+            if (File.Exists(fileOp.DestinationPath))
             {
-                _currentFileBytesCopied = totalBytesRead;
+                var destFileInfo = new FileInfo(fileOp.DestinationPath);
+                if (destFileInfo.IsReadOnly)
+                {
+                    destFileInfo.IsReadOnly = false;
+                }
             }
+            
+            using var sourceStream = new FileStream(fileOp.SourcePath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize, FileOptions.Asynchronous | FileOptions.SequentialScan);
+            using var destStream = new FileStream(fileOp.DestinationPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize, FileOptions.Asynchronous | FileOptions.SequentialScan);
+            
+            long totalBytesRead = 0;
+            int bytesRead;
+            
+            // Modern Memory<byte> API for better performance
+            while ((bytesRead = await sourceStream.ReadAsync(buffer.AsMemory(0, bufferSize), cancellationToken)) > 0)
+            {
+                await destStream.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
+                
+                totalBytesRead += bytesRead;
+                Interlocked.Add(ref _bytesCopied, bytesRead);
+                Interlocked.Exchange(ref _currentFileBytesCopied, totalBytesRead);
+            }
+        }
+        finally
+        {
+            // Always return buffer to pool
+            _bufferPool.Return(buffer);
         }
         
         // Preserve attributes and timestamps if requested
@@ -1057,6 +1186,7 @@ public class NativeFileCopyService : IFileCopyService
         
         _errors.Clear();
         _filesToCopy.Clear();
+        _patternCache.Clear(); // Clear pattern cache for new operation
     }
     
     private string GenerateSummaryMessage(FileCopyResult result)

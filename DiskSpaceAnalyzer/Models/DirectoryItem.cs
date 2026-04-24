@@ -1,5 +1,5 @@
 using System;
-using System.Collections.ObjectModel;
+using System.Collections.Generic;
 
 namespace DiskSpaceAnalyzer.Models;
 
@@ -12,7 +12,8 @@ public class DirectoryItem
     public long DirectoryCount { get; set; }
     public DateTime LastModified { get; set; }
     public bool IsDirectory { get; set; } = true;
-    public ObservableCollection<DirectoryItem> Children { get; set; } = new();
+    public List<DirectoryItem> Children { get; set; } = new();
+    public List<FileItem> Files { get; set; } = new();
     public DirectoryItem? Parent { get; set; }
     public bool IsExpanded { get; set; }
     public bool IsSelected { get; set; }

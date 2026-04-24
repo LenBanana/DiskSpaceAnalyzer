@@ -111,6 +111,26 @@ public class FileCopyProgress
     public double CurrentFilePercentComplete => CurrentFileSize > 0 
         ? Math.Min(100, CurrentFileBytesCopied * 100.0 / CurrentFileSize) : 0;
     
+    /// <summary>
+    /// Smart overall progress that shows directory creation progress during scanning phase.
+    /// During scanning: shows directory creation progress.
+    /// During copying: shows file copy progress.
+    /// During verification: shows file verification progress.
+    /// </summary>
+    public double OverallProgress
+    {
+        get
+        {
+            return State switch
+            {
+                FileCopyJobState.Scanning when TotalDirectories > 0 => 
+                    Math.Min(100, DirectoriesCopied * 100.0 / TotalDirectories),
+                FileCopyJobState.Verifying => VerificationPercentComplete,
+                _ => FilePercentComplete
+            };
+        }
+    }
+    
     /// <summary>Active copy time (excludes paused duration).</summary>
     public TimeSpan ActiveDuration => Elapsed - PausedDuration;
     

@@ -10,20 +10,36 @@ namespace DiskSpaceAnalyzer.Services;
 
 public class FileSystemService : IFileSystemService
 {
+    private const int MaxFilesPerDirectory = 10_000;
+
+    public bool TrackIndividualFiles { get; set; } = true;
+
+    // Sequential scan; these fields are only ever written from one async
+    // continuation at a time, so no Interlocked is required.
+    private long _totalFiles;
+    private long _totalDirectories;
+
     public async Task<ScanResult> ScanDirectoryAsync(string path, ScanMode mode, IProgress<ScanProgress> progress,
         CancellationToken cancellationToken)
     {
-        var startTime = DateTime.Now;
+        var startTime = DateTime.UtcNow;
         var result = new ScanResult();
         var errors = new List<string>();
+
+        _totalFiles = 0;
+        _totalDirectories = 0;
 
         try
         {
             var rootItem = await ScanDirectoryInternalAsync(path, mode, progress, cancellationToken, errors);
             result.RootDirectory = rootItem;
             result.TotalSize = rootItem.Size;
-            result.TotalFiles = CountFiles(rootItem);
-            result.TotalDirectories = CountDirectories(rootItem);
+            result.TotalFiles = _totalFiles;
+            result.TotalDirectories = _totalDirectories;
+        }
+        catch (OperationCanceledException)
+        {
+            throw; // Propagate cancellation to the caller; don't treat it as an error.
         }
         catch (Exception ex)
         {
@@ -36,24 +52,19 @@ public class FileSystemService : IFileSystemService
             };
         }
 
-        result.ScanDuration = DateTime.Now - startTime;
+        result.ScanDuration = DateTime.UtcNow - startTime;
         result.ErrorCount = errors.Count;
-        foreach (var error in errors) result.Errors.Add(error);
+        result.Errors.AddRange(errors);
 
         return result;
     }
 
-    public IEnumerable<string> GetDrives()
-    {
-        return DriveInfo.GetDrives()
+    public IEnumerable<string> GetDrives() =>
+        DriveInfo.GetDrives()
             .Where(d => d.IsReady)
             .Select(d => d.RootDirectory.FullName);
-    }
 
-    public bool DirectoryExists(string path)
-    {
-        return Directory.Exists(path);
-    }
+    public bool DirectoryExists(string path) => Directory.Exists(path);
 
     public DirectoryItem GetDirectoryInfo(string path)
     {
@@ -73,42 +84,87 @@ public class FileSystemService : IFileSystemService
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var directoryInfo = new DirectoryInfo(path);
-        var item = GetDirectoryInfo(path);
-
-        progress.Report(new ScanProgress
+        var item = new DirectoryItem
         {
-            CurrentPath = path,
-            ProcessedItems = 0,
-            ErrorCount = errors.Count
-        });
+            Name = Path.GetFileName(path) ?? path,
+            FullPath = path,
+            IsDirectory = true
+        };
+
+        progress.Report(new ScanProgress { CurrentPath = path, ErrorCount = errors.Count });
 
         try
         {
-            var subdirectories = directoryInfo.GetDirectories();
-            var files = directoryInfo.GetFiles();
+            var dirInfo = new DirectoryInfo(path);
+            item.LastModified = dirInfo.LastWriteTime;
 
-            item.FileCount = files.Length;
-            item.DirectoryCount = subdirectories.Length;
+            var files = new List<FileInfo>();
+            var subdirs = new List<DirectoryInfo>();
 
-            // Calculate size of direct files
+            // Single pass: one OS directory-read instead of separate
+            // GetFiles() + GetDirectories() (two reads of the same inode).
+            try
+            {
+                foreach (var entry in dirInfo.EnumerateFileSystemInfos())
+                {
+                    if (entry is FileInfo fi) files.Add(fi);
+                    else if (entry is DirectoryInfo di) subdirs.Add(di);
+                }
+            }
+            catch (UnauthorizedAccessException)
+            {
+                item.Error = "Access denied";
+                errors.Add($"Access denied to directory: {path}");
+            }
+            catch (Exception ex)
+            {
+                item.Error = ex.Message;
+                errors.Add($"Error scanning directory {path}: {ex.Message}");
+            }
+
+            item.FileCount = files.Count;
+            item.DirectoryCount = subdirs.Count;
+            _totalDirectories++;
+            _totalFiles += files.Count;
+
             long totalSize = 0;
-            foreach (var file in files)
-                try
-                {
-                    totalSize += file.Length;
-                }
-                catch (Exception ex)
-                {
-                    errors.Add($"Cannot access file {file.FullName}: {ex.Message}");
-                }
 
-            // Process subdirectories
-            foreach (var subDir in subdirectories)
+            if (TrackIndividualFiles && files.Count > 0 && files.Count <= MaxFilesPerDirectory)
+            {
+                foreach (var file in files)
+                {
+                    try
+                    {
+                        var fileSize = file.Length;
+                        totalSize += fileSize;
+                        item.Files.Add(new FileItem
+                        {
+                            Name = file.Name,
+                            FullPath = file.FullName,
+                            Size = fileSize,
+                            LastModified = file.LastWriteTime,
+                            Extension = file.Extension
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        errors.Add($"Cannot access file {file.FullName}: {ex.Message}");
+                    }
+                }
+            }
+            else
+            {
+                foreach (var file in files)
+                {
+                    try { totalSize += file.Length; }
+                    catch (Exception ex) { errors.Add($"Cannot access file {file.FullName}: {ex.Message}"); }
+                }
+            }
+
+            foreach (var subDir in subdirs)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                // Report progress for each subdirectory
                 progress.Report(new ScanProgress
                 {
                     CurrentPath = subDir.FullName,
@@ -121,10 +177,22 @@ public class FileSystemService : IFileSystemService
                     DirectoryItem childItem;
 
                     if (mode == ScanMode.Recursive)
-                        childItem = await ScanDirectoryInternalAsync(subDir.FullName, mode, progress, cancellationToken,
-                            errors);
+                    {
+                        childItem = await ScanDirectoryInternalAsync(
+                            subDir.FullName, mode, progress, cancellationToken, errors);
+                    }
                     else
-                        // For top-level mode, calculate size but don't recurse into structure
+                    {
+                        // Top-level mode: one combined walk for size + file count,
+                        // replacing the previous separate CalculateDirectorySize +
+                        // subDir.GetFiles().Length (two redundant traversals).
+                        var (size, fileCount) = await Task.Run(
+                            () => CalculateDirectorySizeAndCount(subDir.FullName, cancellationToken, errors),
+                            cancellationToken);
+
+                        _totalDirectories++;
+                        _totalFiles += fileCount;
+
                         childItem = new DirectoryItem
                         {
                             Name = subDir.Name,
@@ -132,17 +200,16 @@ public class FileSystemService : IFileSystemService
                             LastModified = subDir.LastWriteTime,
                             IsDirectory = true,
                             Parent = item,
-                            FileCount = subDir.GetFiles().Length,
-                            // Calculate total size including subdirectories
-                            Size = await CalculateDirectorySizeAsync(subDir.FullName, progress, cancellationToken,
-                                errors)
+                            FileCount = fileCount,
+                            Size = size
                         };
+                    }
 
                     childItem.Parent = item;
                     item.Children.Add(childItem);
                     totalSize += childItem.Size;
 
-                    if (item.Parent == null) // item == Root
+                    if (item.Parent == null) // root level
                         progress.Report(new ScanProgress
                         {
                             CurrentPath = childItem.FullPath,
@@ -153,16 +220,15 @@ public class FileSystemService : IFileSystemService
                 catch (UnauthorizedAccessException)
                 {
                     errors.Add($"Access denied to directory: {subDir.FullName}");
-                    var errorItem = new DirectoryItem
+                    item.Children.Add(new DirectoryItem
                     {
                         Name = subDir.Name,
                         FullPath = subDir.FullName,
                         Error = "Access denied",
                         Parent = item
-                    };
-                    item.Children.Add(errorItem);
+                    });
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     errors.Add($"Error scanning directory {subDir.FullName}: {ex.Message}");
                 }
@@ -170,17 +236,23 @@ public class FileSystemService : IFileSystemService
 
             item.Size = totalSize;
 
-            // Calculate percentages
+            // Percentages relative to the FULL directory size (files + subdirectories
+            // combined), consistent with how ParallelFileSystemService calculates them.
             if (totalSize > 0)
+            {
+                var totalDouble = (double)totalSize;
                 foreach (var child in item.Children)
-                    child.PercentageOfParent = (double)child.Size / totalSize * 100;
+                    child.PercentageOfParent = child.Size / totalDouble * 100.0;
+                foreach (var file in item.Files)
+                    file.PercentageOfParent = file.Size / totalDouble * 100.0;
+            }
         }
         catch (UnauthorizedAccessException)
         {
             item.Error = "Access denied";
             errors.Add($"Access denied to directory: {path}");
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             item.Error = ex.Message;
             errors.Add($"Error scanning directory {path}: {ex.Message}");
@@ -189,83 +261,56 @@ public class FileSystemService : IFileSystemService
         return item;
     }
 
-    private async Task<long> CalculateDirectorySizeAsync(string path, IProgress<ScanProgress> progress,
-        CancellationToken cancellationToken, List<string> errors)
+    // Iterative (stack-based) walk that returns total size and total file count in
+    // a single pass.  Replaces the recursive CalculateDirectorySize (which had no
+    // stack-depth limit) and the separate subDir.GetFiles(AllDirectories) call.
+    private static (long Size, long FileCount) CalculateDirectorySizeAndCount(
+        string path,
+        CancellationToken cancellationToken,
+        List<string> errors)
     {
-        return await Task.Run(() =>
+        long totalSize = 0;
+        long fileCount = 0;
+        var stack = new Stack<DirectoryInfo>();
+        stack.Push(new DirectoryInfo(path));
+
+        while (stack.Count > 0 && !cancellationToken.IsCancellationRequested)
         {
+            var currentDir = stack.Pop();
+
             try
             {
-                return CalculateDirectorySize(path, progress, cancellationToken, errors);
-            }
-            catch
-            {
-                return 0;
-            }
-        }, cancellationToken);
-    }
-
-    private long CalculateDirectorySize(string path, IProgress<ScanProgress> progress,
-        CancellationToken cancellationToken, List<string> errors)
-    {
-        long size = 0;
-
-        try
-        {
-            progress.Report(new ScanProgress
-            {
-                CurrentPath = path,
-                ErrorCount = errors.Count
-            });
-            var directory = new DirectoryInfo(path);
-
-            // Add file sizes
-            foreach (var file in directory.GetFiles())
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                try
+                // Single-pass enumeration: one directory read for both files and subdirs.
+                foreach (var entry in currentDir.EnumerateFileSystemInfos())
                 {
-                    size += file.Length;
-                }
-                catch (Exception ex)
-                {
-                    errors.Add($"Cannot access file {file.FullName}: {ex.Message}");
+                    try
+                    {
+                        if (entry is FileInfo fi)
+                        {
+                            totalSize += fi.Length;
+                            fileCount++;
+                        }
+                        else if (entry is DirectoryInfo di)
+                        {
+                            stack.Push(di);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        errors.Add($"Cannot access entry {entry.FullName}: {ex.Message}");
+                    }
                 }
             }
-
-            // Add subdirectory sizes
-            foreach (var subDir in directory.GetDirectories())
+            catch (UnauthorizedAccessException)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                try
-                {
-                    size += CalculateDirectorySize(subDir.FullName, progress, cancellationToken, errors);
-                }
-                catch (UnauthorizedAccessException)
-                {
-                    errors.Add($"Access denied to directory: {subDir.FullName}");
-                }
-                catch (Exception ex)
-                {
-                    errors.Add($"Error calculating size for {subDir.FullName}: {ex.Message}");
-                }
+                errors.Add($"Access denied to directory: {currentDir.FullName}");
+            }
+            catch (Exception ex)
+            {
+                errors.Add($"Error accessing directory {currentDir.FullName}: {ex.Message}");
             }
         }
-        catch (Exception ex)
-        {
-            errors.Add($"Error accessing directory {path}: {ex.Message}");
-        }
 
-        return size;
-    }
-
-    private static long CountFiles(DirectoryItem item)
-    {
-        return item.FileCount + item.Children.Sum(CountFiles);
-    }
-
-    private static long CountDirectories(DirectoryItem item)
-    {
-        return item.DirectoryCount + item.Children.Sum(CountDirectories);
+        return (totalSize, fileCount);
     }
 }

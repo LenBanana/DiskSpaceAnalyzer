@@ -1,5 +1,5 @@
 using System;
-using System.Collections.ObjectModel;
+using System.Collections.Generic;
 
 namespace DiskSpaceAnalyzer.Models;
 
@@ -11,5 +11,5 @@ public class ScanResult
     public long TotalDirectories { get; set; }
     public long TotalSize { get; set; }
     public int ErrorCount { get; set; }
-    public ObservableCollection<string> Errors { get; set; } = new();
+    public List<string> Errors { get; set; } = new();
 }

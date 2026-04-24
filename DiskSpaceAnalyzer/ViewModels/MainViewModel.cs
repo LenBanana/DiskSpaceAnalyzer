@@ -48,6 +48,8 @@ public partial class MainViewModel : BaseViewModel
 
     [ObservableProperty] private bool _useParallelProcessing = true;
 
+    [ObservableProperty] private bool _trackIndividualFiles = true;
+
     public MainViewModel(FileSystemService fileSystemService, ParallelFileSystemService parallelFileSystemService,
         IDialogService dialogService, IServiceProvider serviceProvider)
     {
@@ -60,6 +62,9 @@ public partial class MainViewModel : BaseViewModel
         SelectedItems = [];
         AvailableDrives = [];
         ScanErrors = [];
+
+        // Wire up error handler for FileItemViewModel
+        FileItemViewModel.ErrorHandler = (title, message) => _dialogService.ShowError(title, message);
 
         LoadAvailableDrives();
     }
@@ -130,6 +135,10 @@ public partial class MainViewModel : BaseViewModel
 
         IsScanning = true;
         _cancellationTokenSource = new CancellationTokenSource();
+
+        // Update file tracking setting on services
+        _fileSystemService.TrackIndividualFiles = TrackIndividualFiles;
+        _parallelFileSystemService.TrackIndividualFiles = TrackIndividualFiles;
 
         var progress = new Progress<ScanProgress>(UpdateProgress);
         DirectoryItems.Clear();
@@ -279,6 +288,9 @@ public partial class MainViewModel : BaseViewModel
         _currentFileSystemService = value
             ? _parallelFileSystemService
             : _fileSystemService;
+        
+        // Sync file tracking setting
+        _currentFileSystemService.TrackIndividualFiles = TrackIndividualFiles;
     }
 
     private static string FormatBytes(long bytes)

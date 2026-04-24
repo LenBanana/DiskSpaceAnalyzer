@@ -763,7 +763,7 @@ public partial class FileCopyViewModel : BaseViewModel
         TotalFiles = progress.TotalFiles;
         BytesCopied = progress.BytesCopied;
         TotalBytes = progress.TotalBytes;
-        ProgressPercentage = progress.FilePercentComplete;
+        ProgressPercentage = progress.OverallProgress; // Smart progress: directories during scan, files during copy
         TransferSpeedMBps = progress.MegabytesPerSecond;
         ErrorCount = progress.ErrorCount;
         HasErrors = progress.ErrorCount > 0;
